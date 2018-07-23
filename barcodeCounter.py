@@ -14,12 +14,15 @@
 # a constant orientation of all reads. It uses python multiprocessing for speed
 # 
 # Dependencies:
-# Python 3
-# BioPython
-#	Dada2 (R package, installed via bioconductor)
-#	BLAST suite
+#  Python 3
+#  BioPython
+#  Dada2 (R package, installed via bioconductor)
+#  BLAST suite
+#  bowtie2
+#  linux environment for shell scripting (grep and cut)
+# 
 # Execution command for sample data
-# python3 barcodeCounter.py -fastqDir ../BCCounterTesting/rawFastqFiles/ -outputDir ../BCCounterTesting/testBCCounterOutputDir/ -templateSeq ../BCCounterTesting/sequenceTemplate.txt -sample ../BCCounterTesting/sampleFile.txt -multiBCFasta ../BCCounterTesting/primerIndexSeq.fasta -pairedEnd -useUMI -numThreads 3
+#	python3 barcodeCounter.py -fastqDir ../BCCounterTesting/rawFastqFiles/ -outputDir ../BCCounterTesting/testBCCounterOutputDir/ -templateSeq ../BCCounterTesting/sequenceTemplate.txt -sample ../BCCounterTesting/sampleFile.txt -multiBCFasta ../BCCounterTesting/primerIndexSeq.fasta -pairedEnd -useUMI -numThreads 3
 ###########################################################################
 
 
@@ -88,6 +91,7 @@ cmdLineArgParser.add_argument("-sample", dest="sampleFile", help="File defining 
 cmdLineArgParser.add_argument("-readLength", dest="readLength", default=100,  help="Expected length of each read from sequencing machine. Default = 100. Reduce this number from the true read length if necessary such that non-constant regions of the barcode locus are not shared between reads. This does not modify the actual reads")
 cmdLineArgParser.add_argument("-barcodeList", dest="barcodeListFile", help="Optional fasta file specifying the barcodes present in the sample. If file is not supplied, unique barcodes will be identified de novo. The name for each sequence should just be a number identifying the barcode ID.")
 cmdLineArgParser.add_argument("-blastPATH", dest="blastPATH", help="BLAST installation directory if it is not in the PATH already", default="")
+cmdLineArgParser.add_argument("-bowtie2PATH", dest="bowtie2PATH", help="Bowtie2 installation directory if it is not in the PATH already", default="")
 cmdLineArgParser.add_argument("-multiBCFasta", dest="multiBCFastaFile", help="A multi-line fasta file defining multiplexing tag sequences. Required if there are multiplexing tags within the amplicon sequence as defined by the templateSeq file.")
 cmdLineArgParser.add_argument("-pairedEnd", dest="pairedEnd", action="store_true",  help="Use if sequencing data is paired end")
 cmdLineArgParser.add_argument("-RscriptExecPATH", dest="RscriptPATH", help="Rscript executable path if it is not in the PATH already. Must have Dada2 software package installed.", default="Rscript")
@@ -95,6 +99,7 @@ cmdLineArgParser.add_argument("-useUMI", dest="UMI", action="store_true",  help=
 cmdLineArgParser.add_argument("-numThreads", dest="numThreads", default=1,  help="Number of threads to be used for computation.")
 cmdLineArgParser.add_argument("-skipSplitFastq", dest="skipSplitFastq", action="store_true",  help="Use flag if you want to skip the splitting of the raw fastq files (i.e. if you have already done this and do not want to redo it).")
 cmdLineArgParser.add_argument("-remapBarcodes", dest="remapBarcodes", default=False,  help="Set to True if you want to remap barcodes even if the files already exist")
+cmdLineArgParser.add_argument("-useBowtieMapping", dest="useBowtieMapping", action="store_true",  help="Set flag if you want to map with bowtie instead of blast")
 
 #cmdLineArgParser.add_argument("-rebarcoding", dest="rebarcodingFile", help="File defining timepoints within each experiment when new barcodes were introduced. This feature is not currently implemented")
 
@@ -643,7 +648,7 @@ def mapBarcodes(indexString):
 	#get file handles, map read maps
 	if (os.path.isfile(args.outputDir+indexString+"_barcode.fastq") and (not os.path.isfile(args.outputDir+indexString+"_readBarcodeID.txt") or args.remapBarcodes)):
 		bcFastqFile = args.outputDir+indexString+"_barcode.fastq"
-		bcFastqFileHandle = open(args.outputDir+indexString+"_barcode.fastq","r")
+		bcFastqFileHandle = open(bcFastqFile,"r")
 		outputIDFileHandle = 	open(args.outputDir+indexString+"_readBarcodeID.txt","w")
 		UMIFileHandle = open(args.outputDir+indexString+"_UMISeqs.tab","r")
 		BCUMIMap = {}
@@ -681,11 +686,45 @@ def mapBarcodes(indexString):
 			for countVal in BCCountList:
 				outFileHandle.write(str(countVal)+"\n")
 		
-
+def mapBarcodesWithBowtie2(indexString):
+	#get file handles, map read maps
+	if (os.path.isfile(args.outputDir+indexString+"_barcode.fastq") and (not os.path.isfile(args.outputDir+indexString+"_readBarcodeID_bowtie2.txt") or args.remapBarcodes)):
+		bcFastqFile = args.outputDir+indexString+"_barcode.fastq"
+		bcSamFile = args.outputDir+indexString+"_barcode.sam"
+		bcIDFile = args.outputDir+indexString+"_readBarcodeID_bowtie2.txt"
+		
+		subprocess.call([args.bowtie2PATH+"bowtie2","-L 10","-q","-x "+args.barcodeListFile,"-U"+bcFastqFile,"-S"+bcSamFile])
+		subprocess.call(["grep","-v","\"^@\"",bcSamFile,"| cut -f 3",">"+bcIDFile])
+		
+		BCUMIMap = {}
+		BCCountList = [0]*int(file_len(args.barcodeListFile)/2)
+		
+		bcIDFileHandle = open(bcIDFile,"r")
+		UMIFileHandle = open(args.outputDir+indexString+"_UMISeqs.tab","r")
+		
+		#for each read bc / umi pair
+		for bcID, UMIstring in zip(bcIDFileHandle, UMIFileHandle):
+			bcID.strip()
+			if(bcID == "*" or bcID == ""):
+				continue
+			else:
+				outputIDFileHandle.write(topBlastResult[0]+"\n")
+				mykey = bcID+"\t"+UMIstring
+				if mykey not in BCUMIMap or not args.UMI:
+					BCUMIMap[mykey]=1
+					BCCountList[int(bcID)-1] = BCCountList[int(bcID)-1] + 1
+		# the file is parsed, clear the buffer doing the same thing as before
+		bcIDFileHandle.close()
+		UMIFileHandle.close()
+		
+		with open(args.outputDir+indexString+"_barcodeCalls_bowtie2.tab","w") as outFileHandle:
+			for countVal in BCCountList:
+				outFileHandle.write(str(countVal)+"\n")
+		
 
 def generateFinalTables():
 	#print barcode counts as giant tab delimited table, with 1st column as barcode ID number and header file being the sample each column comes from
-	patternString = args.outputDir+"*_barcodeCalls.tab"
+	patternString = args.outputDir+"*_barcodeCalls*.tab"
 	filenames = glob.glob(patternString)
 	handles = [open(filename, 'r') for filename in filenames]    
 	readers = [csv.reader(f, delimiter=',') for f in handles]
@@ -728,8 +767,14 @@ if args.barcodeListFile==None:
 	clusterBarcodes()
 
 #map barcodes
-subprocess.call(["makeblastdb","-in",args.barcodeListFile,"-dbtype","nucl"])
+if(not args.useBowtieMapping):
+	subprocess.call(["makeblastdb","-in",args.barcodeListFile,"-dbtype","nucl"])
+else:
+	subprocess.call([args.bowtie2PATH+"bowtie2-build",args.barcodeListFile,args.barcodeListFile])
 with Pool(processes = int(args.numThreads)) as pool:
-	pool.map(mapBarcodes, sampleToIndexMap.keys())
+	if(not args.useBowtieMapping):
+		pool.map(mapBarcodes, sampleToIndexMap.keys())
+	else:
+		pool.map(mapBarcodesWithBowtie2, sampleToIndexMap.keys())
 
 generateFinalTables()
