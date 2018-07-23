@@ -1,0 +1,7 @@
+
+*.gdoc
+desktop.ini
+runTrimmomatic.sh
+SandeepSampleData/primerIndexSeq.fasta.nhr
+SandeepSampleData/primerIndexSeq.fasta.nin
+SandeepSampleData/primerIndexSeq.fasta.nsq
