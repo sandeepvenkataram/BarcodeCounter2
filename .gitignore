@@ -5,3 +5,6 @@ runTrimmomatic.sh
 SandeepSampleData/primerIndexSeq.fasta.nhr
 SandeepSampleData/primerIndexSeq.fasta.nin
 SandeepSampleData/primerIndexSeq.fasta.nsq
+SampleData/primerIndexSeq.fasta.nhr
+SampleData/primerIndexSeq.fasta.nin
+SampleData/primerIndexSeq.fasta.nsq
