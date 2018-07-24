@@ -98,6 +98,7 @@ cmdLineArgParser.add_argument("-RscriptExecPATH", dest="RscriptPATH", help="Rscr
 cmdLineArgParser.add_argument("-useUMI", dest="UMI", action="store_true",  help="Use flag if you want to remove PCR duplicate reads using UMI data")
 cmdLineArgParser.add_argument("-numThreads", dest="numThreads", default=1,  help="Number of threads to be used for computation.")
 cmdLineArgParser.add_argument("-skipSplitFastq", dest="skipSplitFastq", action="store_true",  help="Use flag if you want to skip the splitting of the raw fastq files (i.e. if you have already done this and do not want to redo it).")
+cmdLineArgParser.add_argument("-demultiplexOnly", dest="demultiplexOnly", action="store_true",  help="Use flag if you want to only split the raw fastq files and not continue with the rest of the barcode counting. This is useful when distributing demultiplexing across several machines, i.e. in a cluster.")
 cmdLineArgParser.add_argument("-remapBarcodes", dest="remapBarcodes", default=False,  help="Set to True if you want to remap barcodes even if the files already exist")
 cmdLineArgParser.add_argument("-useBlastMapping", dest="useBlastMapping", action="store_true",  help="Set flag if you want to map with Blast instead of Bowtie (much slower and likely less accurate)")
 
@@ -109,7 +110,12 @@ args = cmdLineArgParser.parse_args()
 ## Utility functions
 ###########################################################################
 
-##calculate the number of lines in the file
+## Initializer for lock for multiprocessing
+def init(l):
+	global lock
+	lock = l
+
+## Calculate the number of lines in the file
 def file_len(fname):
     with open(fname) as f:
         for i, l in enumerate(f):
@@ -120,7 +126,7 @@ def file_len(fname):
 def eprint(*args, **kwargs):
 	print(*args, file=sys.stderr, **kwargs)
 
-#return the blast hit with lowest e value. requries input in outfmt6 format, output is an array with the columns separated as strings. 
+## Return the blast hit with lowest e value. Requires input in outfmt6 format, output is an array with the columns separated as strings. 
 def getBestBlastMatch(blastOutputLocal):
 	bestMatch = []
 	currentBestEValue = 1
@@ -140,7 +146,7 @@ def getBestBlastMatch(blastOutputLocal):
 		return bestMatch
 	return "multiple" #there are multiple hits!
 
-	#extract coordinates of blast match dealing with reverse complemented sequences if necessary
+## Extract coordinates of blast match dealing with reverse complemented sequences if necessary
 def getSubjectMatchCoordinates(topBlastResult):
 	topBlastResultInts = [topBlastResult[0]]
 	for x in topBlastResult[1:len(topBlastResult)]:
@@ -157,7 +163,7 @@ def getSubjectMatchCoordinates(topBlastResult):
 		endingCoor = endingCoor + topBlastResultInts[4]-1
 	return [startingCoor, endingCoor, rev]
 
-# extract constant regions in template array, creates fasta file and blast database for each
+## Extract constant regions in template array, creates fasta file and blast database for each, then make a master database with all constant regions and multiplexing primer sequences
 def createConstRegionFasta():
 	readNumber = 0
 	filenames = []
@@ -201,9 +207,9 @@ def createConstRegionFasta():
 	blastCall = [args.blastPATH+"makeblastdb","-in",allConstRegionsFileName,"-dbtype","nucl"]
 	subprocess.call(blastCall)
 			
-#this gets regions from many reads at once
-def extractRegionsFromFastqSingleBlast(readSeqRecordList, prefixName):
-	#first, make a fasta file from all reads we are processing and blast against database of all index and constant regions
+## This gets UMI, multiplexing index and barcode regions from each read via blast
+def extractRegionsFromFastq(readSeqRecordList, prefixName):
+	# make a fasta file from all reads we are processing and blast against database of all index and constant regions
 	readSeqFileName = "."+prefixName+"_readSeq.fasta"
 	with open(readSeqFileName,"w") as outfasta:
 		for readID in range(0,len(readSeqRecordList)):
@@ -211,6 +217,7 @@ def extractRegionsFromFastqSingleBlast(readSeqRecordList, prefixName):
 				outfasta.write(">read_"+str(readID)+"_"+str(i)+"\n")
 				outfasta.write(str(readSeqRecordList[readID][i].seq)+"\n")
 	
+	# blast reads against constant and multiplexing index sequences
 	blastCommand = [args.blastPATH+"blastn","-query",readSeqFileName,"-db",allConstRegionsFileName]
 	blastCommand.extend(constantRegionsBlastParams)
 	blastResult = subprocess.check_output(blastCommand).decode('ascii').rstrip().split("\n") 
@@ -238,8 +245,8 @@ def extractRegionsFromFastqSingleBlast(readSeqRecordList, prefixName):
 		if args.pairedEnd:
 			revRecord = readSeqRecordList[readID][1]
 		
-		for readNum in range(0,len(templateSeqArray)): #for each read in the read pair we are supposed to be processing
-			# first make an empty array for coordinates of features and get the blast result lines for this read
+		for readNum in range(0,len(templateSeqArray)): #for each read in the read set we are supposed to be processing
+			# first make an empty array for coordinates of features
 			startingCoordinates = [None]*(len(templateSeqArray[readNum])+1)	
 			myReadKey = "read_"+str(readID)+"_"+str(readNum)
 			if (myReadKey not in readDict):
@@ -260,31 +267,31 @@ def extractRegionsFromFastqSingleBlast(readSeqRecordList, prefixName):
 			reversedRead = False
 			firstIndex = -1
 			for i in range(0,len(templateSeqArray[readNum])): #for each feature in the template
-				if(templateSeqArray[readNum][i]=="D" or (templateSeqArray[readNum][i]!="U" and templateSeqArray[readNum][i]!="X")): #if this is an indexing barcode location
+				if(templateSeqArray[readNum][i]=="D" or (templateSeqArray[readNum][i]!="U" and templateSeqArray[readNum][i]!="X")): #if this is an indexing barcode location or a constant region
 					myLocalHits = []
 					topBlastResult = ""
-					if(templateSeqArray[readNum][i]=="D"):
+					if(templateSeqArray[readNum][i]=="D"): # if this is a multiplexing index region
 						myLocalHits = list(filter(notConstRegionRegex.match, readBlastResult))
 						topBlastResult = getBestBlastMatch(myLocalHits) #get the best hitting indexing region
-					else:
+					else: #this is a constant region
 						if constantRegionNames[readNum][i] not in blastLocationDict:
 							continue
 						myLocalHits = blastLocationDict[constantRegionNames[readNum][i]] #get blast hits for this specific constant region
 						topBlastResult = getBestBlastMatch(myLocalHits)
 					
-					if(topBlastResult == [] or topBlastResult == "multiple"):
+					if(topBlastResult == [] or topBlastResult == "multiple"): #if we don't have a good match for this region
 						continue
 					
 					if(firstIndex == -1):
 						firstIndex = i
-					#figure out where in the read this index region is hitting, set coordinates and track what the index region name was
+					#figure out where in the read this index region is hitting, set coordinates and track the first region we are mapping to account for possibly needing to reverse the match location
 					matchCoords = getSubjectMatchCoordinates(topBlastResult)
 					if(prevSegmentStartingCoord > matchCoords[0] and not reversedRead):
 						reversedRead = True
 					
 					if(prevSegmentStartingCoord == -1): #if this is the first segment we have found a hit for, figure out the right index where the segment is
 						prevSegmentStartingCoord = matchCoords[0]
-					if (not reversedRead): #f the read is not reversed, add in the coordinates properly
+					if (not reversedRead): #if the read is not reversed, add in the coordinates properly
 						startingCoordinates[i]=matchCoords[0]
 						startingCoordinates[i+1]=matchCoords[1]
 					else:
@@ -298,12 +305,12 @@ def extractRegionsFromFastqSingleBlast(readSeqRecordList, prefixName):
 					
 					if(templateSeqArray[readNum][i]=="D"):
 						identifiedIndexBCs.append(topBlastResult[0])
-			if(not reversedRead and startingCoordinates[0] == None): #put the 0 in the right place depending on if the read is reversed or not relative to the template
+			if(not reversedRead and startingCoordinates[0] == None): #put the 0 in the right place depending on if the read is reversed or not relative to the template if we haven't found it already
 				startingCoordinates[0] = 0
 			if(reversedRead and startingCoordinates[len(startingCoordinates)-1] == None):
 				startingCoordinates[len(startingCoordinates)-1] = 0
 				
-			if(reversedRead and startingCoordinates[0] == None): #set the end of the read to be readLength in the right place depending on if the read is reversed or not relative to the template
+			if(reversedRead and startingCoordinates[0] == None): #set the end of the read to be readLength in the right place depending on if the read is reversed or not relative to the template and if we haven't found it already
 				startingCoordinates[0] = int(args.readLength)
 			if(not reversedRead and startingCoordinates[len(startingCoordinates)-1] == None):
 				startingCoordinates[len(startingCoordinates)-1] = int(args.readLength)
@@ -365,7 +372,6 @@ def parseSampleFile():
 				continue
 			lineSplit = line.strip().split("\t") #separate values in each line of the sample file
 			if(len(lineSplit)< 3): # if the line has not enough columns, error and quit
-				
 				eprint("Sample file line:\n"+line+"has incorrect number of columns!\n")
 				sys.exit(0)
 			sampleIndexArray = "_".join(lineSplit[1:(len(lineSplit)+1)])
@@ -394,14 +400,14 @@ def parseTemplateSeq():
 	if(args.multiBCFastaFile=="" and sequence.count("D")>0): #if there is no multiplexing file but we find multiplexing loci in the template, quit
 		eprint("Multiplexing indices exist but no multiBCFastaFile provided!\n")
 		sys.exit(0)
-	#if it is paired end, split template in half for separate annotation, assume no useful features overlap the middle of the template, may want to take a parameter that is read size and split that way so you get more information out of the read, but need to assume each feature is in a single read only
+	#if it is paired end, split template using readSize, assume each feature is in a single read only as otherwise the code will break
 	templateArray = []
 	if(args.pairedEnd):
 		templateArray.append(sequence[0:int(args.readLength)])
 		templateArray.append(sequence[int(len(sequence)-args.readLength):(len(sequence)+1)])
 	else:
 		templateArray.append(sequence)
-	#collapse features into single character and add to global variable
+	#collapse non-constant features into single character and add to global variable
 	global templateSeqArray
 	for seq in templateArray:
 		seq = re.sub("D+","\tD\t",seq)
@@ -439,11 +445,11 @@ def identifyUsedFastqFiles():
 ## Main Executable Functions
 ########################################################################### 
 
-#separate reads by inline and illumina indices, separate UMI and BC regions for each read as well. This is multiprocessed code. THIS IS THE SLOWEST PART OF THE CODE, TRYING TO OPTIMIZE!
+#separate reads by inline and illumina indices, separate UMI and BC regions for each read as well. This is multiprocessed code, but still super slow since each read needs to get blasted against a database
 
 def demultiplexFastqHelper(readList, fastqPair, indexCounter, UMISeqFileHandleMap, badFwdReadsHandle, badRevReadsHandle):
 	
-	extractedRegions = extractRegionsFromFastqSingleBlast(readList, fastqPair.MatchPrefix)
+	extractedRegions = extractRegionsFromFastq(readList, fastqPair.MatchPrefix)
 	#these are all lists (or dictionaries of lists) of output so that we don't have to do too many seqio write calls since they are slow.
 	badFwdReadsList = []
 	badRevReadsList = []
@@ -504,7 +510,7 @@ def demultiplexFastqHelper(readList, fastqPair, indexCounter, UMISeqFileHandleMa
 			if args.pairedEnd:
 			    revRecordList[mySample].append(revRecord)
 			
-	
+	#write outputs to files
 	SeqIO.write(badFwdReadsList,badFwdReadsHandle,"fastq")
 	if args.pairedEnd:
 		SeqIO.write(badRevReadsList,badRevReadsHandle,"fastq")
@@ -553,7 +559,7 @@ def demultiplexFastq(fastqPair):
 			readList = []
 				
 		
-		#If we are here, the file has finished parsing, now need to empty the buffer for the last time, redo what we just did. This should probably get refactored, but too lazy right now
+		#If we are here, the file has finished parsing, now need to empty the buffer for the last time, redo what we just did.
 		if(len(readList)>0):
 			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, UMISeqFileHandleMap, badFwdReadsHandle, badRevReadsHandle)
 		#close file handles!
@@ -588,7 +594,7 @@ def demultiplexFastq(fastqPair):
 			readList = []
 				
 		
-		#If we are here, the file has finished parsing, now need to empty the buffer for the last time, redo what we just did. This should probably get refactored, but too lazy right now
+		#If we are here, the file has finished parsing, now need to empty the buffer for the last time, redo what we just did.
 		if(len(readList)>0):
 			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, UMISeqFileHandleMap, badFwdReadsHandle, None)
 		#close file handles!
@@ -650,7 +656,7 @@ def mapBarcodesHelper(indexString, readNames, UMIStrings, BCUMIMap, BCCountList,
 	return [BCUMIMap, BCCountList]
 	
 def mapBarcodes(indexString):
-	#get file handles, map read maps
+	#only run on this sample if the output file doesn't exist or flag has been set
 	if (os.path.isfile(args.outputDir+indexString+"_barcode.fastq") and (not os.path.isfile(args.outputDir+indexString+"_readBarcodeID.txt") or args.remapBarcodes)):
 		bcFastqFile = args.outputDir+indexString+"_barcode.fastq"
 		bcFastqFileHandle = open(bcFastqFile,"r")
@@ -687,18 +693,22 @@ def mapBarcodes(indexString):
 		bcFastqFileHandle.close()
 		UMIFileHandle.close()
 		
-		with open(args.outputDir+indexString+"_barcodeCalls.tab","w") as outFileHandle:
+		with open(args.outputDir+indexString+"_barcodeCounts.tab","w") as outFileHandle:
 			for countVal in BCCountList:
 				outFileHandle.write(str(countVal)+"\n")
-		
+
+## Bowtie2 mapping is way faster than blast, this is the preferred method unless you can't get bowtie2 on your environment for some reason.				
 def mapBarcodesWithBowtie2(indexString):
-	#get file handles, map read maps
+	#only run on this sample if the output file doesn't exist or flag has been set
 	if (os.path.isfile(args.outputDir+indexString+"_barcode.fastq") and (not os.path.isfile(args.outputDir+indexString+"_readBarcodeID_bowtie2.txt") or args.remapBarcodes)):
 		bcFastqFile = args.outputDir+indexString+"_barcode.fastq"
 		bcSamFile = args.outputDir+indexString+"_barcode.sam"
 		bcIDFile = args.outputDir+indexString+"_readBarcodeID_bowtie2.txt"
 		
+		#bowtie2 call
 		subprocess.call([args.bowtie2PATH+"bowtie2","-L 10","-q","-x "+args.barcodeListFile,"-U"+bcFastqFile,"-S"+bcSamFile])
+		
+		#get the barcode match for each read and put into a single column output file
 		with open(bcIDFile,"w") as outfile:
 			subprocess.call("grep -v '^@' "+bcSamFile+" | cut -f 3",stdout=outfile, shell=True)
 		
@@ -718,24 +728,25 @@ def mapBarcodesWithBowtie2(indexString):
 				if mykey not in BCUMIMap or not args.UMI:
 					BCUMIMap[mykey]=1
 					BCCountList[int(bcID)-1] = BCCountList[int(bcID)-1] + 1
-		# the file is parsed, clear the buffer doing the same thing as before
+		# the file is parsed, close filehandles
 		bcIDFileHandle.close()
 		UMIFileHandle.close()
 		
-		with open(args.outputDir+indexString+"_barcodeCalls_bowtie2.tab","w") as outFileHandle:
+		#write total count data to file
+		with open(args.outputDir+indexString+"_barcodeCounts_bowtie2.tab","w") as outFileHandle:
 			for countVal in BCCountList:
 				outFileHandle.write(str(countVal)+"\n")
 		
 
 def generateFinalTables():
 	#print barcode counts as giant tab delimited table, with 1st column as barcode ID number and header file being the sample each column comes from
-	patternString = args.outputDir+"*_barcodeCalls*.tab"
+	patternString = args.outputDir+"*_barcodeCounts*.tab"
 	filenames = glob.glob(patternString)
 	handles = [open(filename, 'r') for filename in filenames]    
 	readers = [csv.reader(f, delimiter=',') for f in handles]
 	filenames2 = ["BCID"]
 	filenames2.extend(filenames)
-	with  open(args.outputDir+"allBarcodeCalls.tab", 'w') as h:
+	with  open(args.outputDir+"allBarcodeCounts.tab", 'w') as h:
 		writer = csv.writer(h, delimiter='\t', lineterminator='\n', )
 		writer.writerow(filenames2)
 		i = 1
@@ -756,10 +767,6 @@ def generateFinalTables():
 ## Run Program
 ###########################################################################
 
-def init(l):
-	global lock
-	lock = l
-
 parseSampleFile()
 parseTemplateSeq()
 identifyUsedFastqFiles()
@@ -768,14 +775,20 @@ l = Lock()
 if(not args.skipSplitFastq):
 	with Pool(processes = int(args.numThreads), initializer = init, initargs = (l,)) as pool:
 		pool.map(demultiplexFastq, usedFastqFiles)
+
+if args.demultiplexOnly:
+	print("Terminating after splitting raw fastq files as requested.")
+	sys.exit(0)
+		
 if args.barcodeListFile==None:
 	clusterBarcodes()
 
-#map barcodes
+#make database from barcode fasta file for mapping
 if(args.useBlastMapping):
 	subprocess.call(["makeblastdb","-in",args.barcodeListFile,"-dbtype","nucl"])
 else:
 	subprocess.call([args.bowtie2PATH+"bowtie2-build",args.barcodeListFile,args.barcodeListFile])
+
 with Pool(processes = int(args.numThreads)) as pool:
 	if(args.useBlastMapping):
 		pool.map(mapBarcodes, sampleToIndexMap.keys())
