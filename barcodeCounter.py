@@ -694,7 +694,8 @@ def mapBarcodesWithBowtie2(indexString):
 		bcIDFile = args.outputDir+indexString+"_readBarcodeID_bowtie2.txt"
 		
 		subprocess.call([args.bowtie2PATH+"bowtie2","-L 10","-q","-x "+args.barcodeListFile,"-U"+bcFastqFile,"-S"+bcSamFile])
-		subprocess.call(["grep","-v","\"^@\"",bcSamFile,"| cut -f 3",">"+bcIDFile])
+		with open(bcIDFile,"w") as outfile:
+			subprocess.call(["grep","-v",'"^@"',bcSamFile,"| cut -f 3"],stdout=outfile)
 		
 		BCUMIMap = {}
 		BCCountList = [0]*int(file_len(args.barcodeListFile)/2)
@@ -704,11 +705,10 @@ def mapBarcodesWithBowtie2(indexString):
 		
 		#for each read bc / umi pair
 		for bcID, UMIstring in zip(bcIDFileHandle, UMIFileHandle):
-			bcID.strip()
+			bcID = bcID.strip()
 			if(bcID == "*" or bcID == ""):
 				continue
 			else:
-				outputIDFileHandle.write(topBlastResult[0]+"\n")
 				mykey = bcID+"\t"+UMIstring
 				if mykey not in BCUMIMap or not args.UMI:
 					BCUMIMap[mykey]=1
