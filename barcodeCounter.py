@@ -695,7 +695,7 @@ def mapBarcodesWithBowtie2(indexString):
 		
 		subprocess.call([args.bowtie2PATH+"bowtie2","-L 10","-q","-x "+args.barcodeListFile,"-U"+bcFastqFile,"-S"+bcSamFile])
 		with open(bcIDFile,"w") as outfile:
-			subprocess.call(["grep","-v",'"^@"',bcSamFile,"| cut -f 3"],stdout=outfile)
+			subprocess.call("grep -v '^@' "+bcSamFile+" | cut -f 3",stdout=outfile, shell=True)
 		
 		BCUMIMap = {}
 		BCCountList = [0]*int(file_len(args.barcodeListFile)/2)
