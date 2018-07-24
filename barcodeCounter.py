@@ -302,6 +302,11 @@ def extractRegionsFromFastqSingleBlast(readSeqRecordList, prefixName):
 				startingCoordinates[0] = 0
 			if(reversedRead and startingCoordinates[len(startingCoordinates)-1] == None):
 				startingCoordinates[len(startingCoordinates)-1] = 0
+				
+			if(reversedRead and startingCoordinates[0] == None): #set the end of the read to be readLength in the right place depending on if the read is reversed or not relative to the template
+				startingCoordinates[0] = int(args.readLength)
+			if(not reversedRead and startingCoordinates[len(startingCoordinates)-1] == None):
+				startingCoordinates[len(startingCoordinates)-1] = int(args.readLength)
 			
 			for i in range(0,len(templateSeqArray[readNum])): #now that we have all the coordinates, let us extract the sequences for each template feature
 				#set the end coordinate of this feature properly
