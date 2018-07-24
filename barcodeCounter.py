@@ -99,7 +99,7 @@ cmdLineArgParser.add_argument("-useUMI", dest="UMI", action="store_true",  help=
 cmdLineArgParser.add_argument("-numThreads", dest="numThreads", default=1,  help="Number of threads to be used for computation.")
 cmdLineArgParser.add_argument("-skipSplitFastq", dest="skipSplitFastq", action="store_true",  help="Use flag if you want to skip the splitting of the raw fastq files (i.e. if you have already done this and do not want to redo it).")
 cmdLineArgParser.add_argument("-remapBarcodes", dest="remapBarcodes", default=False,  help="Set to True if you want to remap barcodes even if the files already exist")
-cmdLineArgParser.add_argument("-useBowtieMapping", dest="useBowtieMapping", action="store_true",  help="Set flag if you want to map with bowtie instead of blast")
+cmdLineArgParser.add_argument("-useBlastMapping", dest="useBlastMapping", action="store_true",  help="Set flag if you want to map with Blast instead of Bowtie (much slower and likely less accurate)")
 
 #cmdLineArgParser.add_argument("-rebarcoding", dest="rebarcodingFile", help="File defining timepoints within each experiment when new barcodes were introduced. This feature is not currently implemented")
 
@@ -772,12 +772,12 @@ if args.barcodeListFile==None:
 	clusterBarcodes()
 
 #map barcodes
-if(not args.useBowtieMapping):
+if(args.useBlastMapping):
 	subprocess.call(["makeblastdb","-in",args.barcodeListFile,"-dbtype","nucl"])
 else:
 	subprocess.call([args.bowtie2PATH+"bowtie2-build",args.barcodeListFile,args.barcodeListFile])
 with Pool(processes = int(args.numThreads)) as pool:
-	if(not args.useBowtieMapping):
+	if(args.useBlastMapping):
 		pool.map(mapBarcodes, sampleToIndexMap.keys())
 	else:
 		pool.map(mapBarcodesWithBowtie2, sampleToIndexMap.keys())

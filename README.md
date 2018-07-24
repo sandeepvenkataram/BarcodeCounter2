@@ -13,6 +13,8 @@ Dada2 (R package, installed via bioconductor)
 
 BLAST suite
 
+Bowtie2
+
 # Execution command for sample data
 
 python3 barcodeCounter.py -fastqDir SampleData/rawFastqFiles/ -outputDir OutputDir/ -templateSeq SampleData/sequenceTemplate.txt -sample SampleData/sampleFile.txt -multiBCFasta SampleData/primerIndexSeq.fasta -pairedEnd -useUMI -numThreads 3
