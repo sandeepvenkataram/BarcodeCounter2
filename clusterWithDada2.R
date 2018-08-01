@@ -24,7 +24,7 @@ filteredAndTrimmed = filterAndTrim(file.path(fastqFileName),filterFastqFilePath,
 filteredAndTrimmedErrors = filterAndTrim(file.path(fastqErrorSampleFileName),filterFastqErrorsFilePath,maxN=0,maxEE=c(2,2),truncQ=2,rm.phix=TRUE,compress=TRUE,multithread=TRUE)
 
 #learn errors, dereplicate, run dada and make output table
-errF <- learnErrors(filteredAndTrimmedErrors, multithread=TRUE)
+errF <- learnErrors(filterFastqErrorsFilePath, multithread=TRUE)
 derepFs <- derepFastq(filterFastqFilePath, verbose=TRUE)
 dadaFs <- dada(derepFs, err=errF, multithread=TRUE)
 seqTab <- makeSequenceTable(dadaFs)
