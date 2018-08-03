@@ -25,8 +25,6 @@
 #	python3 barcodeCounter.py -fastqDir ../BCCounterTesting/rawFastqFiles/ -outputDir ../BCCounterTesting/testBCCounterOutputDir/ -templateSeq ../BCCounterTesting/sequenceTemplate.txt -sample ../BCCounterTesting/sampleFile.txt -multiBCFasta ../BCCounterTesting/primerIndexSeq.fasta -pairedEnd -useUMI -numThreads 3
 ###########################################################################
 
-
-
 import argparse
 from collections import namedtuple
 import fileinput
@@ -536,7 +534,6 @@ def demultiplexFastq(fastqPair):
 		#output file handles for unidentified reads
 		badFwdReadsHandle = open(args.outputDir+fastqPair.MatchPrefix+"_unmappedReads_R1.fastq","w")
 		badRevReadsHandle = open(args.outputDir+fastqPair.MatchPrefix+"_unmappedReads_R2.fastq","w")
-		
 		#input handles of fastq files, doesn't matter if they are gz compressed or not
 		fwdFastqHandle = open(fastqPair.FwdFastq)
 		revFastqHandle = open(fastqPair.RevFastq)
@@ -773,6 +770,15 @@ identifyUsedFastqFiles()
 createConstRegionFasta()
 l = Lock()
 if(not args.skipSplitFastq):
+	for mySample in sampleToIndexMap.keys(): #make empty files for appending later on, so that we do not accidentally append reads into existing files.
+		barcodeFastqFileHandle = open(args.outputDir+mySample+"_barcode.fastq","w")
+		SampleSplitFastqFileHandleFWD = open(args.outputDir+mySample+"_R1.fastq","w")
+		barcodeFastqFileHandle.close()
+		SampleSplitFastqFileHandleFWD.close()
+		if(args.pairedEnd):
+			SampleSplitFastqFileHandleREV = open(args.outputDir+mySample+"_R2.fastq","w")
+			SampleSplitFastqFileHandleREV.close()
+			
 	with Pool(processes = int(args.numThreads), initializer = init, initargs = (l,)) as pool:
 		pool.map(demultiplexFastq, usedFastqFiles)
 
