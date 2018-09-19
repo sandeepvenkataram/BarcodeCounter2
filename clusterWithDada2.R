@@ -4,14 +4,14 @@ library(Biostrings)
 packageVersion("dada2")
 
 args = commandArgs(trailingOnly=TRUE)
-if (length(args)<3) {
-  stop("Three arguments required: (input file).fastq, (errorSampleFile).fastq and outputPrefix", call.=FALSE)
+if (length(args)<2) {
+  stop("Two arguments required: (input file).fastq and outputPrefix", call.=FALSE)
 } 
 
 #predefined values
 minReadFilter = 10
 
-# get input file, file for making error model and output file prefix
+# get input file and output file prefix
 fastqFileName = args[1]
 fastqErrorSampleFileName = args[2]
 outputPrefix = args[3]
@@ -29,8 +29,13 @@ derepFs <- derepFastq(filterFastqFilePath, verbose=TRUE)
 dadaFs <- dada(derepFs, err=errF, multithread=TRUE)
 seqTab <- makeSequenceTable(dadaFs)
 
-#identify clustered barcodes and print to fasta output file
+#dada2 has a merged paired reads step that does counting and denoising. we are going to skip this since we effectively have single end data
+
+#not going to remove chimeras as this is likely true chimeras anyways.
+
+#where are all of the reads going?
 clusteredBCs = colnames(seqTab)
 BCFasta = data.frame(x=paste0(">",seq(1:NROW(clusteredBCs))),seq=clusteredBCs)
 		
 write.table(file=paste0(outputPrefix,"clusteredBCs.fasta"),BCFasta,sep="\n",quote=F,col.names=F,row.names=F)
+#write.table(file=paste0(outputPrefix,"readTrack.tab"),track,sep="\t",quote=F)

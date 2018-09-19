@@ -653,9 +653,7 @@ def clusterBarcodes():
 					lineCounter = lineCounter + 1
 					outfile.write(line)
 	#do the clustering with dada2 via r script, generates a fasta file of barcodes in output directory
-	callFunction = [args.RscriptPATH,os.path.dirname(sys.argv[0]) + "clusterWithDada2.R",args.outputDir+"allSamplesConcat.fastq",args.outputDir+"allSamplesConcatForErrors.fastq", args.outputDir]
-	subprocess.call(callFunction)
-	callFunction = ["rm",args.outputDir+"allSamplesConcat.fastq"]
+	callFunction = [args.RscriptPATH,os.path.dirname(sys.argv[0]) + "/clusterWithDada2.R",args.outputDir+"allSamplesConcat.fastq",args.outputDir+"allSamplesConcatForErrors.fastq", args.outputDir]
 	subprocess.call(callFunction)
 	args.barcodeListFile = args.outputDir+"clusteredBCs.fasta"
 
@@ -765,17 +763,13 @@ if args.demultiplexOnly:
 		
 if args.barcodeListFile==None:
 	clusterBarcodes()
+	callFunction = ["rm",args.outputDir+"allSamplesConcat.fastq"]
+	subprocess.call(callFunction)
 
 #make database from barcode fasta file for mapping
-if(args.useBlastMapping):
-	subprocess.call(["makeblastdb","-in",args.barcodeListFile,"-dbtype","nucl"])
-else:
-	subprocess.call([args.bowtie2PATH+"bowtie2-build",args.barcodeListFile,args.barcodeListFile])
+subprocess.call([args.bowtie2PATH+"bowtie2-build",args.barcodeListFile,args.barcodeListFile])
 
 with Pool(processes = int(args.numThreads)) as pool:
-	if(args.useBlastMapping):
-		pool.map(mapBarcodes, sampleToIndexMap.keys())
-	else:
-		pool.map(mapBarcodesWithBowtie2, sampleToIndexMap.keys())
+	pool.map(mapBarcodesWithBowtie2, sampleToIndexMap.keys())
 
 generateFinalTables()
