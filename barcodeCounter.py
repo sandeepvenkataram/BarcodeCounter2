@@ -58,7 +58,6 @@ pairedFastqFileStruct = namedtuple("pairedFastqFileStruct","FwdFastq RevFastq Ma
 ###########################################################################
 
 sampleArray = []
-sampleToIndexMap = {}
 indexToSampleMap = {}
 templateSeqLengthsDict = {}
 templateSeqArray = [] #one to two inner arrays, describing the template corresponding to each read
@@ -396,7 +395,6 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 
 def parseSampleFile():
 	global sampleArray
-	global sampleToIndexMap
 	global indexToSampleMap
 	with open(args.sampleFile) as infile: # go through every line in the sample file
 		for line in infile:
@@ -409,24 +407,21 @@ def parseSampleFile():
 			sampleIndexArray = "_".join(lineSplit[1:(len(lineSplit)+1)])
 			sampleIdentityArray = lineSplit[0]
 			
-			if sampleIndexArray in indexToSampleMap or sampleIdentityArray in sampleToIndexMap: #if this sample is indistinguishable from a previous sample, error and quit
-				eprint("Sample file line:\n"+line+"has a duplicate sample identity or multiplexing index with a previous line!\n")
+			if sampleIndexArray in indexToSampleMap: #if this particular file / index combination has been seen already, quit
+				eprint("Sample file line:\n"+line+"has a been assigned to a sample already!\n")
 				sys.exit(0)
 			
 			#else catalog the sample
 			
 			sampleArray.append(sampleStruct(lineSplit[0],lineSplit[1],lineSplit[2:(len(lineSplit)+1)]))
-			sampleToIndexMap[sampleIdentityArray] = sampleIndexArray
 			indexToSampleMap[sampleIndexArray] = sampleIdentityArray
 
-# THIS FUNCTION IS NOT USED AS REBARCODING IS NOT CURRENTLY SUPPORTED!!
-#def parseRebarcodingFile():
 
 def parseTemplateSeq():
 	sequence = ""
 	with open(args.templateSeqFile) as infile:
 		sequence = infile.readline().strip()
-	if(len(re.sub("[ACGTacgtXUDN]","",sequence))>0): # if the sequence has disallowed characters, quit
+	if(len(re.sub("[ACGTacgtXUDNn]","",sequence))>0): # if the sequence has disallowed characters, quit
 		eprint("Template sequence has illegal characters!\n")
 		sys.exit(0)
 	if(args.multiBCFastaFile=="" and sequence.count("D")>0): #if there is no multiplexing file but we find multiplexing loci in the template, quit
@@ -479,7 +474,7 @@ def identifyUsedFastqFiles():
 
 #separate reads by inline and illumina indices, separate UMI and BC regions for each read as well. This is multiprocessed code, but still super slow since each read needs to get blasted against a database
 
-def demultiplexFastqHelper(readList, fastqPair, indexCounter, UMISeqFileHandleMap, badFwdReadsHandle, badRevReadsHandle):
+def demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, badRevReadsHandle):
 	
 	extractedRegions = extractRegionsFromFastq(readList, fastqPair.MatchPrefix)
 	#these are all lists (or dictionaries of lists) of output so that we don't have to do too many seqio write calls since they are slow.
@@ -488,6 +483,7 @@ def demultiplexFastqHelper(readList, fastqPair, indexCounter, UMISeqFileHandleMa
 	finalBCRecordList = {}
 	fwdRecordList = {}
 	revRecordList = {}
+	UMIList = {}
 	
 	expectedNumBCs = 0
 	for subarray in templateSeqArray:
@@ -506,7 +502,7 @@ def demultiplexFastqHelper(readList, fastqPair, indexCounter, UMISeqFileHandleMa
 		myIndex.extend(extractedRegions[readID][2])
 		myIndex = "_".join(myIndex) #this is a string that uniquely defines each sample that was multiplexed
 		if myIndex not in indexCounter:
-			indexCounter[myIndex] = [0, 0, 0, 0, 0, 0]
+			indexCounter[myIndex] = [0, 0, 0, 0, 0]
 		
 		flag = 0
 		if( totalNCount > maxNInReads): #if there are too many Ns in the read
@@ -520,13 +516,11 @@ def demultiplexFastqHelper(readList, fastqPair, indexCounter, UMISeqFileHandleMa
 			flag = 4
 		if(flag == 0): #the read matches a valid sample
 			mySample = indexToSampleMap[myIndex]
-			if mySample not in UMISeqFileHandleMap: #populate map of file handles if necessary
-				UMISeqFileHandleMap[mySample] = open(args.outputDir+mySample+"_UMISeqs.tab","w")
 			if mySample not in finalBCRecordList:
 				finalBCRecordList[mySample]=[]
 				fwdRecordList[mySample]=[]
 				revRecordList[mySample]=[]
-				
+				UMIList[mySample] = []
 			
 			#concat all BCs associated with this read to get final BC
 			finalBC = None
@@ -537,11 +531,8 @@ def demultiplexFastqHelper(readList, fastqPair, indexCounter, UMISeqFileHandleMa
 					finalBC = bcRecord
 				else:
 					finalBC = finalBC + bcRecord
-			if(type(finalBC).__name__ == "NoneType" or len(finalBC.seq) == 0):
-				flag = 5
-				continue
 			
-			UMISeqFileHandleMap[mySample].write("\t".join(str(x) for x in extractedRegions[readID][1])+"\n") #write UMI seqs tab delimited
+			UMIList[mySample].append("\t".join(str(x) for x in extractedRegions[readID][1]))
 			finalBCRecordList[mySample].append(finalBC)
 			fwdRecordList[mySample].append(fwdRecord)
 			if args.pairedEnd:
@@ -557,11 +548,16 @@ def demultiplexFastqHelper(readList, fastqPair, indexCounter, UMISeqFileHandleMa
 		SeqIO.write(badRevReadsList,badRevReadsHandle,"fastq")
 	for mySample in finalBCRecordList.keys():
 		barcodeFastqFileHandle = open(args.outputDir+mySample+"_barcode.fastq","a+")
-		SampleSplitFastqFileHandleFWD = open(args.outputDir+mySample+"_R1.fastq","a+")
 		SeqIO.write(finalBCRecordList[mySample],barcodeFastqFileHandle,"fastq") #write BC portion of read to a fastq (concat among all BC features)
-		SeqIO.write(fwdRecordList[mySample],SampleSplitFastqFileHandleFWD,"fastq") #write raw fwd read to sample read file
 		barcodeFastqFileHandle.close()
+		
+		SampleSplitFastqFileHandleFWD = open(args.outputDir+mySample+"_R1.fastq","a+")
+		SeqIO.write(fwdRecordList[mySample],SampleSplitFastqFileHandleFWD,"fastq") #write raw fwd read to sample read file
 		SampleSplitFastqFileHandleFWD.close()
+		
+		UMIFileHandle = open(args.outputDir+mySample+"_UMISeqs.tab","a+")
+		UMIFileHandle.write("\n".join(UMIList[mySample]))
+		UMIFileHandle.close()
 		
 		if args.pairedEnd:
 			SampleSplitFastqFileHandleREV = open(args.outputDir+mySample+"_R2.fastq","a+")
@@ -573,11 +569,10 @@ def demultiplexFastq(fastqPair):
 	# outputs: barcode file fastq, total split fastq, umi sequences, unidentified reads
 	indexCounter = {}
 	badFwdReadsHandle = open(args.outputDir+fastqPair.MatchPrefix+"_unmappedReads_R1.fastq","w")
-	indexCounterHandle = open(args.outputDir+fastqPair.MatchPrefix+"_numReadsFoundPerSample.txt","w")
+	
 	fwdFastqHandle = open(fastqPair.FwdFastq)
 	if(fastqPair.FwdFastq.endswith("gz")):
 		fwdFastqHandle = gzip.open(fastqPair.FwdFastq, "rt")
-	UMISeqFileHandleMap = {}
 	readCounter = 0
 	readList = []
 	if(args.pairedEnd):
@@ -597,19 +592,19 @@ def demultiplexFastq(fastqPair):
 				break
 			if(readCounter % fileBufferSize != 0): #if we are not at file buffer size, do not run parser since file io is super expensive and we want to minimize it
 				continue
-			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, UMISeqFileHandleMap, badFwdReadsHandle, badRevReadsHandle) #process buffered reads using helper method
+			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, badRevReadsHandle) #process buffered reads using helper method
 			readList = []
 				
 		
 		#If we are here, the file has finished parsing, now need to empty the buffer for the last time, redo what we just did.
 		if(len(readList)>0):
-			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, UMISeqFileHandleMap, badFwdReadsHandle, badRevReadsHandle)
+			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, badRevReadsHandle)
 
 		#close file handles!
 		badRevReadsHandle.close()
 		revFastqHandle.close()
 
-	else: #same as above, but for single read sequencing. THIS HAS NOT BEEN TESTED!
+	else: #same as above, but for single read sequencing. 
 		#output file handles for unidentified reads
 		print("Processing new FASTQ file[s]!\n"+fastqPair.FwdFastq+"\n"+fastqPair.MatchPrefix+"\n")
 		
@@ -619,24 +614,28 @@ def demultiplexFastq(fastqPair):
 			readList.append([fwdRec])#.reverse_complement(name=True,description=True,id=True,annotations=True)]) #reverse complement the reverse read to match with the template sequence
 			if(readCounter % fileBufferSize != 0): #if we are not at file buffer size, do not run parser since file io is super expensive and we want to minimize it
 				continue
-			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, UMISeqFileHandleMap, badFwdReadsHandle, None) #process buffered reads using helper method
+			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, None) #process buffered reads using helper method
 			readList = []
 				
 		
 		#If we are here, the file has finished parsing, now need to empty the buffer for the last time, redo what we just did.
 		if(len(readList)>0):
-			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, UMISeqFileHandleMap, badFwdReadsHandle, None)
-	indexCounterSum = [0, 0, 0, 0, 0, 0]	
+			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, None)
+	
+	##
+	##finalizing for both single and paired end data
+	##
+	
+	indexCounterSum = [0, 0, 0, 0, 0]	
+	indexCounterHandle = open(args.outputDir+fastqPair.MatchPrefix+"_numReadsFoundPerSample.txt","w")
 	for index in indexCounter.keys():
 		indexCounterHandle.write(index+"\t"+str(indexCounter[index])+"\n")
-		for i2 in range(0,6):
+		for i2 in range(0,5):
 			indexCounterSum[i2] = indexCounterSum[i2] + indexCounter[index][i2]
 	indexCounterHandle.write("Total\t"+str(indexCounterSum)+"\n")
 	indexCounterHandle.close()
 	badFwdReadsHandle.close()
 	fwdFastqHandle.close()
-	for indexString in UMISeqFileHandleMap.keys():
-		UMISeqFileHandleMap[indexString].close()
 	
 #do clustering across all samples
 def clusterBarcodes():
@@ -661,8 +660,9 @@ def clusterBarcodes():
 
 #map barcodes, multiprocessed code
 			
-def mapBarcodesWithBowtie2(indexString):
+def mapBarcodes(mySamp):
 	#only run on this sample if the output file doesn't exist or flag has been set
+	indexString = mySamp.Sample
 	if (os.path.isfile(args.outputDir+indexString+"_barcode.fastq") and (not os.path.isfile(args.outputDir+indexString+"_readBarcodeID_bowtie2.txt") or args.remapBarcodes)):
 		bcFastqFile = args.outputDir+indexString+"_barcode.fastq"
 		bcSamFile = args.outputDir+indexString+"_barcode.sam"
@@ -745,11 +745,14 @@ identifyUsedFastqFiles()
 createConstRegionFasta()
 l = Lock()
 if(not args.skipSplitFastq):
-	for mySample in sampleToIndexMap.keys(): #make empty files for appending later on, so that we do not accidentally append reads into existing files.
+	for mySamp in sampleArray: #make empty files for appending later on, so that we do not accidentally append reads into existing files.
+		mySample = mySamp.Sample
 		barcodeFastqFileHandle = open(args.outputDir+mySample+"_barcode.fastq","w")
 		SampleSplitFastqFileHandleFWD = open(args.outputDir+mySample+"_R1.fastq","w")
 		barcodeFastqFileHandle.close()
 		SampleSplitFastqFileHandleFWD.close()
+		UMIFileHandle = open(args.outputDir+mySample+"_UMISeqs.tab","w")
+		UMIFileHandle.close()
 		if(args.pairedEnd):
 			SampleSplitFastqFileHandleREV = open(args.outputDir+mySample+"_R2.fastq","w")
 			SampleSplitFastqFileHandleREV.close()
@@ -763,13 +766,13 @@ if args.demultiplexOnly:
 		
 if args.barcodeListFile==None:
 	clusterBarcodes()
-	callFunction = ["rm",args.outputDir+"allSamplesConcat.fastq"]
-	subprocess.call(callFunction)
+	#callFunction = ["rm",args.outputDir+"allSamplesConcat.fastq"]
+	#subprocess.call(callFunction)
 
 #make database from barcode fasta file for mapping
 subprocess.call([args.bowtie2PATH+"bowtie2-build",args.barcodeListFile,args.barcodeListFile])
 
 with Pool(processes = int(args.numThreads)) as pool:
-	pool.map(mapBarcodesWithBowtie2, sampleToIndexMap.keys())
+	pool.map(mapBarcodes, sampleArray)
 
 generateFinalTables()
