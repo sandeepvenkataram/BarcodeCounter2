@@ -26,6 +26,9 @@
 #
 ###########################################################################
 
+# Need to update code to handle the same sample being sequenced on multiple lanes / indices
+
+
 import argparse
 from collections import namedtuple
 import fileinput
@@ -97,7 +100,7 @@ cmdLineArgParser.add_argument("-useUMI", dest="UMI", action="store_true",  help=
 cmdLineArgParser.add_argument("-numThreads", dest="numThreads", default=1,  help="Number of threads to be used for computation.")
 cmdLineArgParser.add_argument("-skipSplitFastq", dest="skipSplitFastq", action="store_true",  help="Use flag if you want to skip the splitting of the raw fastq files (i.e. if you have already done this and do not want to redo it).")
 cmdLineArgParser.add_argument("-demultiplexOnly", dest="demultiplexOnly", action="store_true",  help="Use flag if you want to only split the raw fastq files and not continue with the rest of the barcode counting. This is useful when distributing demultiplexing across several machines, i.e. in a cluster.")
-cmdLineArgParser.add_argument("-remapBarcodes", dest="remapBarcodes", default=False,  help="Set to True if you want to remap barcodes even if the files already exist")
+cmdLineArgParser.add_argument("-remapBarcodes", dest="remapBarcodes", action="store_true",  help="Set to True if you want to remap barcodes even if the files already exist")
 
 
 #cmdLineArgParser.add_argument("-rebarcoding", dest="rebarcodingFile", help="File defining timepoints within each experiment when new barcodes were introduced. This feature is not currently implemented")
@@ -653,6 +656,7 @@ def clusterBarcodes():
 					outfile.write(line)
 	#do the clustering with dada2 via r script, generates a fasta file of barcodes in output directory
 	callFunction = [args.RscriptPATH,os.path.dirname(sys.argv[0]) + "/clusterWithDada2.R",args.outputDir+"allSamplesConcat.fastq",args.outputDir+"allSamplesConcatForErrors.fastq", args.outputDir]
+	print(" ".join(callFunction))
 	subprocess.call(callFunction)
 	args.barcodeListFile = args.outputDir+"clusteredBCs.fasta"
 
@@ -667,25 +671,29 @@ def mapBarcodes(mySamp):
 		bcFastqFile = args.outputDir+indexString+"_barcode.fastq"
 		bcSamFile = args.outputDir+indexString+"_barcode.sam"
 		bcIDFile = args.outputDir+indexString+"_readBarcodeID_bowtie2.txt"
-		
+		mapQualFile = args.outputDir+indexString+"_readMappingQuality_bowtie2.txt"
 		#bowtie2 call
 		subprocess.call([args.bowtie2PATH+"bowtie2","-L 10","-q","-x "+args.barcodeListFile,"-U"+bcFastqFile,"-S"+bcSamFile])
 		
-		#get the barcode match for each read and put into a single column output file
+		#get the barcode match for each read and put into a single column output file. do the same for mapping quality
 		with open(bcIDFile,"w") as outfile:
 			subprocess.call("grep -v '^@' "+bcSamFile+" | cut -f 3",stdout=outfile, shell=True)
+		with open(mapQualFile,"w") as outfile:
+			subprocess.call("grep -v '^@' "+bcSamFile+" | cut -f 5",stdout=outfile, shell=True)
 		
 		BCUMIMap = {}
 		BCCountList = [0]*int(file_len(args.barcodeListFile)/2)
 		BCUMIDupCountList = [0]*int(file_len(args.barcodeListFile)/2)
 		totalUnmappedReads = 0
 		bcIDFileHandle = open(bcIDFile,"r")
+		mapQFileHandle = open(mapQualFile,"r")
 		UMIFileHandle = open(args.outputDir+indexString+"_UMISeqs.tab","r")
 		
 		#for each read bc / umi pair
-		for bcID, UMIstring in zip(bcIDFileHandle, UMIFileHandle):
+		for bcID, UMIstring, mapQ in zip(bcIDFileHandle, UMIFileHandle, mapQFileHandle):
 			bcID = bcID.strip()
-			if(bcID == "*" or bcID == ""):
+			mapQ = mapQ.strip()
+			if(bcID == "*" or bcID == "" or mapQ == "*" or int(mapQ) <= 20):
 				totalUnmappedReads = totalUnmappedReads + 1
 				continue
 			else:
