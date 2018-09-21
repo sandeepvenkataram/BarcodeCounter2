@@ -30,22 +30,23 @@
 
 
 import argparse
+from Bio.Seq import Seq
+from Bio import SeqIO
 from collections import namedtuple
+import csv
+from __future__ import division
 import fileinput
 import glob
+import gzip
+import itertools as IT
+from multiprocessing import Pool, Lock
+import os
+import random
 import re
 import sys
 import subprocess
-from Bio.Seq import Seq
-from Bio import SeqIO
-from Bio.SeqIO.QualityIO import FastqGeneralIterator
-import gzip
-import csv
-import itertools as IT
-import timeit
-import time
-import os
-from multiprocessing import Pool, Lock
+
+
 
 
 
@@ -246,9 +247,6 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 	blastResult = subprocess.check_output(blastCommand).decode('ascii').rstrip().split("\n") 
 	finalReturnVal = []
 	notConstRegionRegex = re.compile("^((?!const_region).)*$")
-	oneTime = 0
-	twoTime = 0
-	threeTime = 0
 	readDict = {}
 	
 	for line in blastResult: #store all blast hits in a dictionary for quick lookup
@@ -285,7 +283,6 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 					blastLocationDict[curSample]=[]
 				blastLocationDict[curSample].append(line)
 			
-			#timeB = time.time()
 			prevSegmentStartingCoord = -1
 			reversedRead = False
 			firstIndex = -1
@@ -590,9 +587,7 @@ def demultiplexFastq(fastqPair):
 			readCounter = readCounter + 1
 			fwdRec = fwdRec[0:args.readLength]
 			revRec = revRec[0:args.readLength]
-			readList.append([fwdRec,revRec])#.reverse_complement(name=True,description=True,id=True,annotations=True)]) #reverse complement the reverse read to match with the template sequence
-			if(readCounter > 30000 and 0 ==1):
-				break
+			readList.append([fwdRec,revRec])
 			if(readCounter % fileBufferSize != 0): #if we are not at file buffer size, do not run parser since file io is super expensive and we want to minimize it
 				continue
 			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, badRevReadsHandle) #process buffered reads using helper method
@@ -626,7 +621,7 @@ def demultiplexFastq(fastqPair):
 			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, None)
 	
 	##
-	##finalizing for both single and paired end data
+	##finalizing for both single and paired end data, count total read statistics here
 	##
 	
 	indexCounterSum = [0, 0, 0, 0, 0]	
@@ -642,21 +637,37 @@ def demultiplexFastq(fastqPair):
 	
 #do clustering across all samples
 def clusterBarcodes():
-	#concat all barcode fastq files by experiment into a single file for clustering, make a separate file using a subsample of the reads from each sample for making the error model
-
-	allFiles = glob.glob(args.outputDir+"*_barcode.fastq")
-	with open(args.outputDir+"allSamplesConcat.fastq","w") as outfile, open(args.outputDir+"allSamplesConcatForErrors.fastq","w") as outfile2:
+	##
+	## concat all barcode fastq files by experiment into a single file for clustering
+	##
+	allFiles = glob.glob(args.outputDir+"*_barcode.fastq")\
+	totalNumLines = 0
+	with open(args.outputDir+"allSamplesConcat.fastq","w") as outfile:
 		for fname in allFiles:
 			with open(fname) as infile:
-				lineCounter = 0
 				for line in infile:
-					if lineCounter < readsPerSampleForErrors*4:
-						outfile2.write(line)
-					lineCounter = lineCounter + 1
 					outfile.write(line)
+					totalNumLines += 1
+	totalNumReads = int(totalNumLines / 4)
+	#subsample 200k reads to make the dada2 error model, since this takes forever if you use the entire dataset
+	#code from https://pythonforbiologists.com/randomly-sampling-reads-from-a-fastq-file/
+	numberToSample = 200000
+	recordsToKeep = set(random.sample(xrange(totalNumReads + 1), numberToSample))
+	readNum = 0
+	with open(args.outputDir+"allSamplesConcat.fastq") as input, open(args.outputDir+"allSamplesConcatForErrors.fastq", "w") as output:
+		for line1 in input:
+			line2 = input.next()
+			line3 = input.next()
+			line4 = input.next()
+			if readNum in recordsToKeep:
+				output.write(line1)
+				output.write(line2)
+				output.write(line3)
+				output.write(line4)
+			readNum += 1
+	
 	#do the clustering with dada2 via r script, generates a fasta file of barcodes in output directory
 	callFunction = [args.RscriptPATH,os.path.dirname(sys.argv[0]) + "/clusterWithDada2.R",args.outputDir+"allSamplesConcat.fastq",args.outputDir+"allSamplesConcatForErrors.fastq", args.outputDir]
-	print(" ".join(callFunction))
 	subprocess.call(callFunction)
 	args.barcodeListFile = args.outputDir+"clusteredBCs.fasta"
 
