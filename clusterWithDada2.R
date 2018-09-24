@@ -20,8 +20,8 @@ filterFastqErrorsFilePath = file.path(paste0(outputPrefix,"BCs_filterAndTrimmedF
 
 #fitler and trim input!
 
-filteredAndTrimmed = filterAndTrim(file.path(fastqFileName),filterFastqFilePath,maxN=0,maxEE=c(2,2),truncQ=2,rm.phix=TRUE,compress=TRUE,multithread=TRUE)
-filteredAndTrimmedErrors = filterAndTrim(file.path(fastqErrorSampleFileName),filterFastqErrorsFilePath,maxN=0,maxEE=c(2,2),truncQ=2,rm.phix=TRUE,compress=TRUE,multithread=TRUE)
+#filteredAndTrimmed = filterAndTrim(file.path(fastqFileName),filterFastqFilePath,maxN=0,maxEE=c(2,2),truncQ=2,rm.phix=TRUE,compress=TRUE,multithread=TRUE)
+#filteredAndTrimmedErrors = filterAndTrim(file.path(fastqErrorSampleFileName),filterFastqErrorsFilePath,maxN=0,maxEE=c(2,2),truncQ=2,rm.phix=TRUE,compress=TRUE,multithread=TRUE)
 
 #learn errors, dereplicate, run dada and make output table
 errF <- learnErrors(filterFastqErrorsFilePath, multithread=TRUE)

@@ -34,7 +34,7 @@ from Bio.Seq import Seq
 from Bio import SeqIO
 from collections import namedtuple
 import csv
-from __future__ import division
+#from __future__ import division
 import fileinput
 import glob
 import gzip
@@ -408,7 +408,7 @@ def parseSampleFile():
 			sampleIdentityArray = lineSplit[0]
 			
 			if sampleIndexArray in indexToSampleMap: #if this particular file / index combination has been seen already, quit
-				eprint("Sample file line:\n"+line+"has a been assigned to a sample already!\n")
+				eprint("Sample file line:\n"+line+"has been assigned to a sample already!\n")
 				sys.exit(0)
 			
 			#else catalog the sample
@@ -640,7 +640,7 @@ def clusterBarcodes():
 	##
 	## concat all barcode fastq files by experiment into a single file for clustering
 	##
-	allFiles = glob.glob(args.outputDir+"*_barcode.fastq")\
+	allFiles = glob.glob(args.outputDir+"*_barcode.fastq")
 	totalNumLines = 0
 	with open(args.outputDir+"allSamplesConcat.fastq","w") as outfile:
 		for fname in allFiles:
