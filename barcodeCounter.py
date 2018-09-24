@@ -454,6 +454,7 @@ def identifyUsedFastqFiles():
 		patternString = re.compile(".*"+sample.FilePrefix+".*.fastq(.gz)?")
 		readFiles = glob.glob(args.fastqDir+"*")
 		readFiles2 = list(filter(patternString.match,readFiles))
+		readFiles2.sort()
 		myfwd = None
 		myrev = None
 		if(len(readFiles2)==0 or (len(readFiles2)==1 and args.pairedEnd) or (len(readFiles2)==2 and not args.pairedEnd) or len(readFiles2)>2): #check that we found the expected number of fastq files (based on single or paired end data expected)
