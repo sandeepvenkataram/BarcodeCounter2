@@ -653,13 +653,13 @@ def clusterBarcodes():
 	#subsample 200k reads to make the dada2 error model, since this takes forever if you use the entire dataset
 	#code from https://pythonforbiologists.com/randomly-sampling-reads-from-a-fastq-file/
 	numberToSample = 200000
-	recordsToKeep = set(random.sample(xrange(totalNumReads + 1), numberToSample))
+	recordsToKeep = set(random.sample(range(totalNumReads + 1), numberToSample))
 	readNum = 0
 	with open(args.outputDir+"allSamplesConcat.fastq") as input, open(args.outputDir+"allSamplesConcatForErrors.fastq", "w") as output:
 		for line1 in input:
-			line2 = input.next()
-			line3 = input.next()
-			line4 = input.next()
+			line2 = input.readline()
+			line3 = input.readline()
+			line4 = input.readline()
 			if readNum in recordsToKeep:
 				output.write(line1)
 				output.write(line2)
