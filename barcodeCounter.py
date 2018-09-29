@@ -396,12 +396,16 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 def parseSampleFile():
 	global sampleArray
 	global indexToSampleMap
+	numInlineIndices = 0
+	for seq in templateSeqArray:
+		if(seq == "D"):
+			numInlineIndices+=1
 	with open(args.sampleFile) as infile: # go through every line in the sample file
 		for line in infile:
 			if(line.strip() == ""):
 				continue
 			lineSplit = line.strip().split("\t") #separate values in each line of the sample file
-			if(len(lineSplit)< 3): # if the line has not enough columns, error and quit
+			if(len(lineSplit) != 2 + numInlineIndices): # if the line has not enough columns, error and quit
 				eprint("Sample file line:\n"+line+"has incorrect number of columns!\n")
 				sys.exit(0)
 			sampleIndexArray = "_".join(lineSplit[1:(len(lineSplit)+1)])
@@ -759,8 +763,8 @@ def generateFinalTables():
 ## Run Program
 ###########################################################################
 
-parseSampleFile()
 parseTemplateSeq()
+parseSampleFile()
 identifyUsedFastqFiles()
 createConstRegionFasta()
 l = Lock()
