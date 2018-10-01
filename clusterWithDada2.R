@@ -8,6 +8,8 @@ if (length(args)<2) {
   stop("Two arguments required: (input file).fastq and outputPrefix", call.=FALSE)
 } 
 
+#predefined values
+minReadFilter = 10
 
 # get input file and output file prefix
 fastqFileName = args[1]
