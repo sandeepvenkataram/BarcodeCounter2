@@ -706,15 +706,12 @@ def clusterBarcodesDNAClust():
 	##
 	## concat all barcode fastq files by experiment into a single file for clustering
 	##
-	allFiles = glob.glob(args.outputDir+"*t1_barcode.fastq")
+	allFiles = glob.glob(args.outputDir+"*_barcode.fastq")
 	dedupFileName = args.outputDir+"allSamplesConcatDedup.fasta"
 	readCountFileName = args.outputDir+"allSamplesConcatDedup.readCounts"
 	dnaclustOutputFileName = args.outputDir+"allSamplesConcatDedup.dnaclustOut"
 	clusteredBCFileName = args.outputDir+"clusteredBCsDNAClust.fasta"
 	
-	clusteredFileName = args.outputDir+"clusteredBCsDNAclust.fasta"
-	
-	blastOutputFileHandle = open(blastOutputFileName, "w")
 	totalNumLines = 0
 	uniqueBCLines = {}
 	for fname in allFiles:
