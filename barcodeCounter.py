@@ -879,7 +879,7 @@ if args.demultiplexOnly:
 	sys.exit(0)
 		
 if args.barcodeListFile==None:
-	clusterBarcodesBlast()
+	clusterBarcodesDNAClust()
 
 #make database from barcode fasta file for mapping
 subprocess.call([args.bowtie2PATH+"bowtie2-build",args.barcodeListFile,args.barcodeListFile])
