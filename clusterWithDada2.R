@@ -37,5 +37,5 @@ seqTab <- makeSequenceTable(dadaFs)
 clusteredBCs = colnames(seqTab)
 BCFasta = data.frame(x=paste0(">",seq(1:NROW(clusteredBCs))),seq=clusteredBCs)
 		
-write.table(file=paste0(outputPrefix,"clusteredBCs.fasta"),BCFasta,sep="\n",quote=F,col.names=F,row.names=F)
+write.table(file=paste0(outputPrefix,"clusteredBCsDada2.fasta"),BCFasta,sep="\n",quote=F,col.names=F,row.names=F)
 #write.table(file=paste0(outputPrefix,"readTrack.tab"),track,sep="\t",quote=F)

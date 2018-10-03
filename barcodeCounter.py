@@ -79,6 +79,7 @@ readsPerSampleForErrors = 10000
 multiplexBCsBlastParams =  ["-word_size", "6","-outfmt","6","-evalue","1E-2"]
 constantRegionsBlastParams = ["-word_size", "6","-outfmt","6","-evalue","1E0"]
 BCRegionsBlastParams = ["-word_size", "6","-outfmt","6","-evalue","1E-4"]
+BCClusteringBlastParams = ["-word_size", "6","-outfmt","6","-evalue","1E-17"]
 
 ###########################################################################
 ## Import arguments and define help output
@@ -94,6 +95,7 @@ cmdLineArgParser.add_argument("-readLength", dest="readLength", default=100,  he
 cmdLineArgParser.add_argument("-barcodeList", dest="barcodeListFile", help="Optional fasta file specifying the barcodes present in the sample. If file is not supplied, unique barcodes will be identified de novo. The name for each sequence should just be a number identifying the barcode ID.")
 cmdLineArgParser.add_argument("-blastPATH", dest="blastPATH", help="BLAST installation directory if it is not in the PATH already", default="")
 cmdLineArgParser.add_argument("-bowtie2PATH", dest="bowtie2PATH", help="Bowtie2 installation directory if it is not in the PATH already", default="")
+cmdLineArgParser.add_argument("-DNAclustPATH", dest="DNAclustPATH", help="DNAclust installation directory if it is not in the PATH already", default="")
 cmdLineArgParser.add_argument("-multiBCFasta", dest="multiBCFastaFile", help="A multi-line fasta file defining multiplexing tag sequences. Required if there are multiplexing tags within the amplicon sequence as defined by the templateSeq file.")
 cmdLineArgParser.add_argument("-pairedEnd", dest="pairedEnd", action="store_true",  help="Use if sequencing data is paired end")
 cmdLineArgParser.add_argument("-RscriptExecPATH", dest="RscriptPATH", help="Rscript executable path if it is not in the PATH already. Must have Dada2 software package installed.", default="Rscript")
@@ -128,6 +130,30 @@ def file_len(fname):
 def eprint(*args, **kwargs):
 	print(*args, file=sys.stderr, **kwargs)
 
+	
+def getConnectedNodes(inputGraph, counterMap, startNode, previousNodeMap):
+	curHighestCount = 0
+	curHighestCountNode = -1
+	#print("Starting recursion with "+str(startNode))
+	#print(inputGraph[startNode])
+	#print(previousNodeMap)
+	if(startNode not in previousNodeMap):
+		previousNodeMap[startNode] = 1
+	for node in inputGraph[startNode]:
+		if node in previousNodeMap or node == startNode:
+			continue
+		if counterMap[node] > curHighestCount:
+			curHighestCountNode = node
+			curHighestCount = counterMap[node]
+		previousNodeMap[node] = 1
+		[tempHighestCount, tempHighestNode, tempPreviousNodeMap] = getConnectedNodes(inputGraph, counterMap, node, previousNodeMap)
+		previousNodeMap = tempPreviousNodeMap
+		if tempHighestCount > curHighestCount:
+			curHighestCountNode = curHighestCountNode
+			curHighestCount = tempHighestCount
+		
+	return [curHighestCount, curHighestCountNode, previousNodeMap]
+	
 ## Return the blast hit with lowest e value. Requires input in outfmt6 format, output is an array with the columns separated as strings. 
 def getBestBlastMatch(blastOutputLocal):
 	bestMatch = []
@@ -641,7 +667,7 @@ def demultiplexFastq(fastqPair):
 	fwdFastqHandle.close()
 	
 #do clustering across all samples
-def clusterBarcodes():
+def clusterBarcodesDada2():
 	##
 	## concat all barcode fastq files by experiment into a single file for clustering
 	##
@@ -674,15 +700,79 @@ def clusterBarcodes():
 	#do the clustering with dada2 via r script, generates a fasta file of barcodes in output directory
 	callFunction = [args.RscriptPATH,os.path.dirname(sys.argv[0]) + "/clusterWithDada2.R",args.outputDir+"allSamplesConcat.fastq",args.outputDir+"allSamplesConcatForErrors.fastq", args.outputDir]
 	subprocess.call(callFunction)
-	args.barcodeListFile = args.outputDir+"clusteredBCs.fasta"
+	args.barcodeListFile = args.outputDir+"clusteredBCsDada2.fasta"
 
+def clusterBarcodesDNAClust():
+	##
+	## concat all barcode fastq files by experiment into a single file for clustering
+	##
+	allFiles = glob.glob(args.outputDir+"*t1_barcode.fastq")
+	dedupFileName = args.outputDir+"allSamplesConcatDedup.fasta"
+	readCountFileName = args.outputDir+"allSamplesConcatDedup.readCounts"
+	dnaclustOutputFileName = args.outputDir+"allSamplesConcatDedup.dnaclustOut"
+	clusteredBCFileName = args.outputDir+"clusteredBCsDNAClust.fasta"
 	
+	clusteredFileName = args.outputDir+"clusteredBCsDNAclust.fasta"
+	
+	blastOutputFileHandle = open(blastOutputFileName, "w")
+	totalNumLines = 0
+	uniqueBCLines = {}
+	for fname in allFiles:
+		with open(fname) as infileHandle:
+			for line in SeqIO.parse(infileHandle,"fastq"):
+				myseq = str(line.seq)
+				if (myseq not in uniqueBCLines):
+					uniqueBCLines[myseq] = 0
+				uniqueBCLines[myseq] += 1
+	readCounter = 1
+	BCClusterListMap = {}
+	readCounterMap = {}
+	with open(dedupFileName,"w") as outfileHandle, open(readCountFileName,"w") as readCountFileHandle:
+		for line in uniqueBCLines.keys():
+			if 'N' not in line and uniqueBCLines[line] > 3: #remove any reads with Ns in it (< .5% of reads) or sequences with too few reads
+				outfileHandle.write(">"+str(readCounter)+"\n")
+				outfileHandle.write(line+"\n")
+				BCClusterListMap[readCounter] = []
+				readCounterMap[readCounter] = uniqueBCLines[line]
+				readCountFileHandle.write(str(uniqueBCLines[line])+"\n")
+				readCounter +=1
+			
+	# use DNAclust to cluster reads
+	callFunction = [args.DNAclustPATH+"dnaclust", "-s",".95","--approximate-filter","-k","6","-t",str(args.numThreads),"-i",dedupFileName]
+	with open(dnaclustOutputFileName,"w") as outfile:
+		subprocess.call(callFunction,shell=True,stdout=outfile)
+	
+	bcsToUse = []
+	with open(dnaclustOutputFileName,"r") as infile:
+		for line in infile:
+			line = line.strip()
+			lineSplit = line.split("\t")
+			bcsToUse.append(int(lineSplit[0]))
 
+	bcsToUse.sort()
+	totalNumBCs = len(bcsToUse)
+	maxBCToUseIndex = bcsToUse[totalNumBCs-1]
+	bcsToUseIndex = 0
+	curIndex = 1
+	with open(dedupFileName,"r") as infile, open(clusteredBCFileName,"w") as outfile:
+		for headerline in infile:
+			if(bcsToUseIndex > totalNumBCs - 1):
+				break
+			headerline = line.strip()
+			seqline = infile.readline()
+			seqline = seqline.strip()
+			if(curIndex == bcsToUse[bcsToUseIndex]):
+				outfile.write(">"+str(bcsToUseIndex+1)+"\n")
+				outfile.write(seqline+"\n")
+				bcsToUseIndex +=1
+			curIndex +=1	
+	
+	args.barcodeListFile = clusteredBCFileName
 #map barcodes, multiprocessed code
 			
 def mapBarcodes(mySamp):
 	#only run on this sample if the output file doesn't exist or flag has been set
-	indexString = mySamp.Sample
+	indexString = mySamp
 	if (os.path.isfile(args.outputDir+indexString+"_barcode.fastq") and (not os.path.isfile(args.outputDir+indexString+"_readBarcodeID_bowtie2.txt") or args.remapBarcodes)):
 		bcFastqFile = args.outputDir+indexString+"_barcode.fastq"
 		bcSamFile = args.outputDir+indexString+"_barcode.sam"
@@ -789,14 +879,16 @@ if args.demultiplexOnly:
 	sys.exit(0)
 		
 if args.barcodeListFile==None:
-	clusterBarcodes()
-	#callFunction = ["rm",args.outputDir+"allSamplesConcat.fastq"]
-	#subprocess.call(callFunction)
+	clusterBarcodesBlast()
 
 #make database from barcode fasta file for mapping
 subprocess.call([args.bowtie2PATH+"bowtie2-build",args.barcodeListFile,args.barcodeListFile])
 
+uniqueSamples = {}
+for sample in sampleArray:
+	uniqueSamples[sample.Sample] = 1
+
 with Pool(processes = int(args.numThreads)) as pool:
-	pool.map(mapBarcodes, sampleArray)
+	pool.map(mapBarcodes, uniqueSamples.keys())
 
 generateFinalTables()
