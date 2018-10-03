@@ -704,7 +704,7 @@ def clusterBarcodesDada2():
 
 def clusterBarcodesDNAClust():
 	##
-	## concat all barcode fastq files by experiment into a single file for clustering
+	## concat all barcode fastq files by experiment into a single file for clustering, remove those sequences that appear less than 3 times
 	##
 	allFiles = glob.glob(args.outputDir+"*_barcode.fastq")
 	dedupFileName = args.outputDir+"allSamplesConcatDedup.fasta"
@@ -739,6 +739,7 @@ def clusterBarcodesDNAClust():
 	with open(dnaclustOutputFileName,"w") as outfile:
 		subprocess.call(callFunction,shell=True,stdout=outfile)
 	
+	# create final barcode fasta file using the centers of the clusters found by DNAclust
 	bcsToUse = []
 	with open(dnaclustOutputFileName,"r") as infile:
 		for line in infile:
@@ -765,8 +766,8 @@ def clusterBarcodesDNAClust():
 			curIndex +=1	
 	
 	args.barcodeListFile = clusteredBCFileName
+
 #map barcodes, multiprocessed code
-			
 def mapBarcodes(mySamp):
 	#only run on this sample if the output file doesn't exist or flag has been set
 	indexString = mySamp
