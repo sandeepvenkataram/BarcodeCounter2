@@ -433,6 +433,8 @@ def parseSampleFile():
 			lineSplit = line.strip().split("\t") #separate values in each line of the sample file
 			if(len(lineSplit) != 2 + numInlineIndices): # if the line has not enough columns, error and quit
 				eprint("Sample file line:\n"+line+"has incorrect number of columns!\n")
+				eprint(str(len(lineSplit)))
+				eprint(str(numInlineIndices))
 				sys.exit(0)
 			sampleIndexArray = "_".join(lineSplit[1:(len(lineSplit)+1)])
 			sampleIdentityArray = lineSplit[0]
