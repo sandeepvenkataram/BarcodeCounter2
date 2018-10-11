@@ -423,9 +423,10 @@ def parseSampleFile():
 	global sampleArray
 	global indexToSampleMap
 	numInlineIndices = 0
-	for seq in templateSeqArray:
-		if(seq == "D"):
-			numInlineIndices+=1
+	for seqAr in templateSeqArray:
+		for seq in seqAr:
+			if(seq == "D"):
+				numInlineIndices+=1
 	with open(args.sampleFile) as infile: # go through every line in the sample file
 		for line in infile:
 			if(line.strip() == ""):
