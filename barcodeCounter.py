@@ -13,10 +13,14 @@
 # that adapters were added by PCR and not blunt end ligation since it assumes
 # a constant orientation of all reads. It uses python multiprocessing for speed
 # 
+# 
+# There is legacy code to do clustering with Dada2. As it is too slow for typical 
+# barcode calling purposes, it has been commented out.
+# 
 # Dependencies:
 #  Python 3
 #  BioPython
-#  Dada2 (R package, installed via bioconductor)
+#  DNAClust
 #  BLAST suite
 #  bowtie2
 #  linux environment for shell scripting (grep and cut)
@@ -95,7 +99,7 @@ cmdLineArgParser.add_argument("-bowtie2PATH", dest="bowtie2PATH", help="Bowtie2 
 cmdLineArgParser.add_argument("-DNAclustPATH", dest="DNAclustPATH", help="DNAclust installation directory if it is not in the PATH already", default="")
 cmdLineArgParser.add_argument("-multiBCFasta", dest="multiBCFastaFile", help="A multi-line fasta file defining multiplexing tag sequences. Required if there are multiplexing tags within the amplicon sequence as defined by the templateSeq file.")
 cmdLineArgParser.add_argument("-pairedEnd", dest="pairedEnd", action="store_true",  help="Use if sequencing data is paired end")
-cmdLineArgParser.add_argument("-RscriptExecPATH", dest="RscriptPATH", help="Rscript executable path if it is not in the PATH already. Must have Dada2 software package installed.", default="Rscript")
+#cmdLineArgParser.add_argument("-RscriptExecPATH", dest="RscriptPATH", help="Rscript executable path if it is not in the PATH already. Must have Dada2 software package installed.", default="Rscript")
 cmdLineArgParser.add_argument("-useUMI", dest="UMI", action="store_true",  help="Use flag if you want to remove PCR duplicate reads using UMI data")
 cmdLineArgParser.add_argument("-numThreads", dest="numThreads", default=1,  help="Number of threads to be used for computation.")
 cmdLineArgParser.add_argument("-skipSplitFastq", dest="skipSplitFastq", action="store_true",  help="Use flag if you want to skip the splitting of the raw fastq files (i.e. if you have already done this and do not want to redo it).")
@@ -111,23 +115,34 @@ args = cmdLineArgParser.parse_args()
 ## Utility functions
 ###########################################################################
 
+
 ## Initializer for lock for multiprocessing
+  
 def init(l):
 	global lock
 	lock = l
 
+	
+	
 ## Calculate the number of lines in the file
+
 def file_len(fname):
     with open(fname) as f:
         for i, l in enumerate(f):
             pass
     return i + 1
 
+
+	
 ## Print to std error
+
 def eprint(*args, **kwargs):
 	print(*args, file=sys.stderr, **kwargs)
+
+	
 	
 ## Return the blast hit with lowest e value. Requires input in outfmt6 format, output is an array with the columns separated as strings. 
+
 def getBestBlastMatch(blastOutputLocal):
 	bestMatch = []
 	currentBestEValue = 1
@@ -147,29 +162,10 @@ def getBestBlastMatch(blastOutputLocal):
 		return bestMatch
 	return "multiple" #there are multiple hits!
 
-def getSecondBestBlastMatches(blastOutputLocal):
-	
-	bestSplitInfo = blastOutputArray[0].split("\t")
-	bestMatch = [float(bestSplitInfo[10])]
-	currentBestEValue = 1
-	blastOutputArray = blastOutputLocal
-	if(len(blastOutputArray)<=1): #if there are no hits, return empty array
-		return bestMatch
-	matchIdx = 1
-	secondSplitInfo = blastOutputArray[matchIdx].split("\t")
-	secondMatchEvalue = float(secondSplitInfo[10])
-	
-	while(matchIdx < len(blastOutputLocal)):
-		splitInfo = blastOutputArray[matchIdx].split("\t")
-		if(len(splitInfo)<10): #if the line is poorly formatted, return empty array
-			return bestMatch
-		if(float(splitInfo[10])==secondMatchEvalue):
-			bestMatch.extend(splitInfo[1])
-		else:
-			break
-	return bestMatch
+
 	
 ## Extract coordinates of blast match dealing with reverse complemented sequences if necessary
+
 def getSubjectMatchCoordinates(topBlastResult):
 	topBlastResultInts = [topBlastResult[0]]
 	for x in topBlastResult[1:len(topBlastResult)]:
@@ -186,7 +182,10 @@ def getSubjectMatchCoordinates(topBlastResult):
 		endingCoor = endingCoor + topBlastResultInts[4]-1
 	return [startingCoor, endingCoor, rev]
 
+	
+	
 ## Extract constant regions in template array, creates fasta file and blast database for each, then make a master database with all constant regions and multiplexing primer sequences
+
 def createConstRegionFasta():
 	readNumber = 0
 	filenames = []
@@ -229,8 +228,11 @@ def createConstRegionFasta():
 					outfile.write(line)
 	blastCall = [args.blastPATH+"makeblastdb","-in",allConstRegionsFileName,"-dbtype","nucl"]
 	subprocess.call(blastCall)
-			
+	
+
+	
 ## This gets UMI, multiplexing index and barcode regions from each read via blast
+
 def extractRegionsFromFastq(readSeqRecordList, prefixName):
 	# make a fasta file from all reads we are processing and blast against database of all index and constant regions
 	readSeqFileName = "."+prefixName+"_readSeq.fasta"
@@ -386,11 +388,15 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 		finalReturnVal.append(returnVal)
 	return(finalReturnVal)
 	
-		
+	
+	
 	
 ###########################################################################	
 ## Functions for Parsing Input Files and Directories
 ###########################################################################
+
+
+## read sample file provided by user and store in global array and map
 
 def parseSampleFile():
 	global sampleArray
@@ -423,6 +429,10 @@ def parseSampleFile():
 			indexToSampleMap[sampleIndexArray] = sampleIdentityArray
 
 
+## Read Template sequence provided by user and parse. 
+#  This code works best if every UMI/Index/Barcode is only in a single read, so reads are effectively non-overlapping. 
+#  Use -readLength to truncate the read if necessary			
+			
 def parseTemplateSeq():
 	sequence = ""
 	with open(args.templateSeqFile) as infile:
@@ -433,7 +443,7 @@ def parseTemplateSeq():
 	if(args.multiBCFastaFile=="" and sequence.count("D")>0): #if there is no multiplexing file but we find multiplexing loci in the template, quit
 		eprint("Multiplexing indices exist but no multiBCFastaFile provided!\n")
 		sys.exit(0)
-	#if it is paired end, split template using readSize, assume each feature is in a single read only as otherwise the code will break
+	#if it is paired end, split template using readSize, 
 	templateArray = []
 	if(args.pairedEnd):
 		templateArray.append(sequence[0:int(args.readLength)])
@@ -453,7 +463,10 @@ def parseTemplateSeq():
 		seq = re.sub("\t$","",seq)
 		templateSeqArray.append(seq.split("\t"))
 
-# figure out which fastq files we are going to use, pair forward and reverse reads as necessary, assume they are in alphabetical order
+		
+## Figure out which fastq files we are going to use, 
+#  Pair forward and reverse reads as necessary, assume they are in alphabetical order (R1 before R2)
+
 def identifyUsedFastqFiles():
 	usedFastqFileDict = {}
 	for sample in sampleArray:
@@ -479,8 +492,84 @@ def identifyUsedFastqFiles():
 ## Main Executable Functions
 ########################################################################### 
 
-#separate reads by inline and illumina indices, separate UMI and BC regions for each read as well. This is multiprocessed code, but still super slow since each read needs to get blasted against a database
 
+## Separate reads by inline and illumina indices, separate UMI and BC regions for each read as well. 
+#  This is multiprocessed code, but is probably still the slowest part of the analysis
+  
+
+def demultiplexFastq(fastqPair):
+	# outputs: barcode file fastq, total split fastq, umi sequences, unidentified reads
+	indexCounter = {}
+	badFwdReadsHandle = open(args.outputDir+fastqPair.MatchPrefix+"_unmappedReads_R1.fastq","w")
+	
+	fwdFastqHandle = open(fastqPair.FwdFastq)
+	if(fastqPair.FwdFastq.endswith("gz")):
+		fwdFastqHandle = gzip.open(fastqPair.FwdFastq, "rt")
+	readCounter = 0
+	readList = []
+	if(args.pairedEnd):
+		print("Processing new FASTQ file[s]!\nFWD file:\t"+fastqPair.FwdFastq+"\nREV file:\t"+fastqPair.RevFastq+"\n"+fastqPair.MatchPrefix+"\n")
+		
+		badRevReadsHandle = open(args.outputDir+fastqPair.MatchPrefix+"_unmappedReads_R2.fastq","w")
+		revFastqHandle = open(fastqPair.RevFastq)
+		if(fastqPair.RevFastq.endswith("gz")):
+			revFastqHandle = gzip.open(fastqPair.RevFastq, "rt")
+		
+		for fwdRec, revRec in zip(SeqIO.parse(fwdFastqHandle,"fastq"), SeqIO.parse(revFastqHandle,"fastq")): #for each read, WE MAY WANT TO REPLACE THIS WITH GENERALFASTQITERATOR FOR PERFORMANCE! Zip should have OK performance, so that shouldn't be an issue
+			readCounter = readCounter + 1
+			fwdRec = fwdRec[0:args.readLength]
+			revRec = revRec[0:args.readLength]
+			readList.append([fwdRec,revRec])
+			if(readCounter % fileBufferSize != 0): #if we are not at file buffer size, do not run parser since file io is super expensive and we want to minimize it
+				continue
+			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, badRevReadsHandle) #process buffered reads using helper method
+			readList = []
+				
+		
+		#If we are here, the file has finished parsing, now need to empty the buffer for the last time, redo what we just did.
+		if(len(readList)>0):
+			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, badRevReadsHandle)
+
+		#close file handles!
+		badRevReadsHandle.close()
+		revFastqHandle.close()
+
+	else: #same as above, but for single read sequencing. 
+		#output file handles for unidentified reads
+		print("Processing new FASTQ file[s]!\n"+fastqPair.FwdFastq+"\n"+fastqPair.MatchPrefix+"\n")
+		
+		for fwdRec in SeqIO.parse(fwdFastqHandle,"fastq"): 
+			fwdRec = fwdRec[0:args.readLength]
+			readCounter = readCounter + 1
+			readList.append([fwdRec])#.reverse_complement(name=True,description=True,id=True,annotations=True)]) #reverse complement the reverse read to match with the template sequence
+			if(readCounter % fileBufferSize != 0): #if we are not at file buffer size, do not run parser since file io is super expensive and we want to minimize it
+				continue
+			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, None) #process buffered reads using helper method
+			readList = []
+				
+		
+		#If we are here, the file has finished parsing, now need to empty the buffer for the last time, redo what we just did.
+		if(len(readList)>0):
+			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, None)
+	
+	##
+	##finalizing for both single and paired end data, count total read statistics here
+	##
+	
+	indexCounterSum = [0, 0, 0, 0, 0]	
+	indexCounterHandle = open(args.outputDir+fastqPair.MatchPrefix+"_numReadsFoundPerSample.txt","w")
+	for index in indexCounter.keys():
+		indexCounterHandle.write(index+"\t"+str(indexCounter[index])+"\n")
+		for i2 in range(0,5):
+			indexCounterSum[i2] = indexCounterSum[i2] + indexCounter[index][i2]
+	indexCounterHandle.write("Total\t"+str(indexCounterSum)+"\n")
+	indexCounterHandle.close()
+	badFwdReadsHandle.close()
+	fwdFastqHandle.close()
+
+	
+## Helper function that processes a single read during demultiplexing
+	
 def demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, badRevReadsHandle):
 	
 	extractedRegions = extractRegionsFromFastq(readList, fastqPair.MatchPrefix)
@@ -572,112 +661,50 @@ def demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle,
 			SampleSplitFastqFileHandleREV.close()
 	return indexCounter
 
-def demultiplexFastq(fastqPair):
-	# outputs: barcode file fastq, total split fastq, umi sequences, unidentified reads
-	indexCounter = {}
-	badFwdReadsHandle = open(args.outputDir+fastqPair.MatchPrefix+"_unmappedReads_R1.fastq","w")
 	
-	fwdFastqHandle = open(fastqPair.FwdFastq)
-	if(fastqPair.FwdFastq.endswith("gz")):
-		fwdFastqHandle = gzip.open(fastqPair.FwdFastq, "rt")
-	readCounter = 0
-	readList = []
-	if(args.pairedEnd):
-		print("Processing new FASTQ file[s]!\nFWD file:\t"+fastqPair.FwdFastq+"\nREV file:\t"+fastqPair.RevFastq+"\n"+fastqPair.MatchPrefix+"\n")
-		
-		badRevReadsHandle = open(args.outputDir+fastqPair.MatchPrefix+"_unmappedReads_R2.fastq","w")
-		revFastqHandle = open(fastqPair.RevFastq)
-		if(fastqPair.RevFastq.endswith("gz")):
-			revFastqHandle = gzip.open(fastqPair.RevFastq, "rt")
-		
-		for fwdRec, revRec in zip(SeqIO.parse(fwdFastqHandle,"fastq"), SeqIO.parse(revFastqHandle,"fastq")): #for each read, WE MAY WANT TO REPLACE THIS WITH GENERALFASTQITERATOR FOR PERFORMANCE! Zip should have OK performance, so that shouldn't be an issue
-			readCounter = readCounter + 1
-			fwdRec = fwdRec[0:args.readLength]
-			revRec = revRec[0:args.readLength]
-			readList.append([fwdRec,revRec])
-			if(readCounter % fileBufferSize != 0): #if we are not at file buffer size, do not run parser since file io is super expensive and we want to minimize it
-				continue
-			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, badRevReadsHandle) #process buffered reads using helper method
-			readList = []
-				
-		
-		#If we are here, the file has finished parsing, now need to empty the buffer for the last time, redo what we just did.
-		if(len(readList)>0):
-			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, badRevReadsHandle)
+## Do clustering across all samples using Dada2. 
+#  WARNING: This is really slow, and probably won't work with large numbers of unique reads
+#  This is currently not available without modifying the code
+  
+# def clusterBarcodesDada2():
+	# ##
+	# ## concat all barcode fastq files by experiment into a single file for clustering
+	# ##
+	# allFiles = glob.glob(args.outputDir+"*_barcode.fastq")
+	# totalNumLines = 0
+	# with open(args.outputDir+"allSamplesConcat.fastq","w") as outfile:
+		# for fname in allFiles:
+			# with open(fname) as infile:
+				# for line in infile:
+					# outfile.write(line)
+					# totalNumLines += 1
+	# totalNumReads = int(totalNumLines / 4)
+	# #subsample 200k reads to make the dada2 error model, since this takes forever if you use the entire dataset
+	# #code from https://pythonforbiologists.com/randomly-sampling-reads-from-a-fastq-file/
+	# numberToSample = 200000
+	# recordsToKeep = set(random.sample(range(totalNumReads + 1), numberToSample))
+	# readNum = 0
+	# with open(args.outputDir+"allSamplesConcat.fastq") as input, open(args.outputDir+"allSamplesConcatForErrors.fastq", "w") as output:
+		# for line1 in input:
+			# line2 = input.readline()
+			# line3 = input.readline()
+			# line4 = input.readline()
+			# if readNum in recordsToKeep:
+				# output.write(line1)
+				# output.write(line2)
+				# output.write(line3)
+				# output.write(line4)
+			# readNum += 1
+	
+	# #do the clustering with dada2 via r script, generates a fasta file of barcodes in output directory
+	# callFunction = [args.RscriptPATH,os.path.dirname(sys.argv[0]) + "/clusterWithDada2.R",args.outputDir+"allSamplesConcat.fastq",args.outputDir+"allSamplesConcatForErrors.fastq", args.outputDir]
+	# subprocess.call(callFunction)
+	# args.barcodeListFile = args.outputDir+"clusteredBCsDada2.fasta"
 
-		#close file handles!
-		badRevReadsHandle.close()
-		revFastqHandle.close()
+	
+## Do clustering across all samples using DNAClust. This is the default. 
 
-	else: #same as above, but for single read sequencing. 
-		#output file handles for unidentified reads
-		print("Processing new FASTQ file[s]!\n"+fastqPair.FwdFastq+"\n"+fastqPair.MatchPrefix+"\n")
-		
-		for fwdRec in SeqIO.parse(fwdFastqHandle,"fastq"): 
-			fwdRec = fwdRec[0:args.readLength]
-			readCounter = readCounter + 1
-			readList.append([fwdRec])#.reverse_complement(name=True,description=True,id=True,annotations=True)]) #reverse complement the reverse read to match with the template sequence
-			if(readCounter % fileBufferSize != 0): #if we are not at file buffer size, do not run parser since file io is super expensive and we want to minimize it
-				continue
-			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, None) #process buffered reads using helper method
-			readList = []
-				
-		
-		#If we are here, the file has finished parsing, now need to empty the buffer for the last time, redo what we just did.
-		if(len(readList)>0):
-			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, None)
 	
-	##
-	##finalizing for both single and paired end data, count total read statistics here
-	##
-	
-	indexCounterSum = [0, 0, 0, 0, 0]	
-	indexCounterHandle = open(args.outputDir+fastqPair.MatchPrefix+"_numReadsFoundPerSample.txt","w")
-	for index in indexCounter.keys():
-		indexCounterHandle.write(index+"\t"+str(indexCounter[index])+"\n")
-		for i2 in range(0,5):
-			indexCounterSum[i2] = indexCounterSum[i2] + indexCounter[index][i2]
-	indexCounterHandle.write("Total\t"+str(indexCounterSum)+"\n")
-	indexCounterHandle.close()
-	badFwdReadsHandle.close()
-	fwdFastqHandle.close()
-	
-#do clustering across all samples
-def clusterBarcodesDada2():
-	##
-	## concat all barcode fastq files by experiment into a single file for clustering
-	##
-	allFiles = glob.glob(args.outputDir+"*_barcode.fastq")
-	totalNumLines = 0
-	with open(args.outputDir+"allSamplesConcat.fastq","w") as outfile:
-		for fname in allFiles:
-			with open(fname) as infile:
-				for line in infile:
-					outfile.write(line)
-					totalNumLines += 1
-	totalNumReads = int(totalNumLines / 4)
-	#subsample 200k reads to make the dada2 error model, since this takes forever if you use the entire dataset
-	#code from https://pythonforbiologists.com/randomly-sampling-reads-from-a-fastq-file/
-	numberToSample = 200000
-	recordsToKeep = set(random.sample(range(totalNumReads + 1), numberToSample))
-	readNum = 0
-	with open(args.outputDir+"allSamplesConcat.fastq") as input, open(args.outputDir+"allSamplesConcatForErrors.fastq", "w") as output:
-		for line1 in input:
-			line2 = input.readline()
-			line3 = input.readline()
-			line4 = input.readline()
-			if readNum in recordsToKeep:
-				output.write(line1)
-				output.write(line2)
-				output.write(line3)
-				output.write(line4)
-			readNum += 1
-	
-	#do the clustering with dada2 via r script, generates a fasta file of barcodes in output directory
-	callFunction = [args.RscriptPATH,os.path.dirname(sys.argv[0]) + "/clusterWithDada2.R",args.outputDir+"allSamplesConcat.fastq",args.outputDir+"allSamplesConcatForErrors.fastq", args.outputDir]
-	subprocess.call(callFunction)
-	args.barcodeListFile = args.outputDir+"clusteredBCsDada2.fasta"
-
 def clusterBarcodesDNAClust():
 	##
 	## concat all barcode fastq files by experiment into a single file for clustering, remove those sequences that appear less than 3 times
@@ -743,7 +770,9 @@ def clusterBarcodesDNAClust():
 	
 	args.barcodeListFile = clusteredBCFileName
 
-#map barcodes, multiprocessed code
+
+## Map barcodes using bowtie2, multiprocessed code
+  
 def mapBarcodes(mySamp):
 	#only run on this sample if the output file doesn't exist or flag has been set
 	indexString = mySamp
@@ -798,6 +827,9 @@ def mapBarcodes(mySamp):
 				for countVal in BCUMIDupCountList:
 					outFileHandle.write(str(countVal)+"\n")
 
+
+## Create final concatenated table of read counts for every population/timepoint combination for every barcode
+
 def generateFinalTables():
 	#print barcode counts as giant tab delimited table, with 1st column as barcode ID number and header file being the sample each column comes from
 	patternString = args.outputDir+"*_barcodeCounts*.tab"
@@ -823,14 +855,25 @@ def generateFinalTables():
 	for f in handles:
 		f.close()
 
+		
+		
+		
 ###########################################################################
 ## Run Program
 ###########################################################################
+
+
+
+## Call Initialization functions to parse user inputs
 
 parseTemplateSeq()
 parseSampleFile()
 identifyUsedFastqFiles()
 createConstRegionFasta()
+
+
+## Demultiplex data using multiprocessing
+
 l = Lock()
 if(not args.skipSplitFastq):
 	for mySamp in sampleArray: #make empty files for appending later on, so that we do not accidentally append reads into existing files.
@@ -848,15 +891,26 @@ if(not args.skipSplitFastq):
 	with Pool(processes = int(args.numThreads), initializer = init, initargs = (l,)) as pool:
 		pool.map(demultiplexFastq, usedFastqFiles)
 
+		
+## If we are only trying to demultiplex, quit now
+		
 if args.demultiplexOnly:
 	print("Terminating after splitting raw fastq files as requested.")
 	sys.exit(0)
-		
+
+
+## Cluster barcodes using DNAClust.
+	
 if args.barcodeListFile==None:
 	clusterBarcodesDNAClust()
 
-#make database from barcode fasta file for mapping
+
+## Make database from barcode fasta file for mapping
+  
 subprocess.call([args.bowtie2PATH+"bowtie2-build",args.barcodeListFile,args.barcodeListFile])
+
+
+## Map barcodes using bowtie2 with multiprocessing
 
 uniqueSamples = {}
 for sample in sampleArray:
@@ -864,5 +918,8 @@ for sample in sampleArray:
 
 with Pool(processes = int(args.numThreads)) as pool:
 	pool.map(mapBarcodes, uniqueSamples.keys())
+
+
+## Generate final output table	
 
 generateFinalTables()
