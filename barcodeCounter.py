@@ -26,8 +26,6 @@
 #
 ###########################################################################
 
-# Need to update code to handle the same sample being sequenced on multiple lanes / indices
-
 
 import argparse
 from Bio.Seq import Seq
@@ -79,14 +77,13 @@ readsPerSampleForErrors = 10000
 multiplexBCsBlastParams =  ["-word_size", "6","-outfmt","6","-evalue","1E-2"]
 constantRegionsBlastParams = ["-word_size", "6","-outfmt","6","-evalue","1E0"]
 BCRegionsBlastParams = ["-word_size", "6","-outfmt","6","-evalue","1E-4"]
-BCClusteringBlastParams = ["-word_size", "6","-outfmt","6","-evalue","1E-17"]
 
 ###########################################################################
 ## Import arguments and define help output
 ###########################################################################
 
 
-cmdLineArgParser = argparse.ArgumentParser(description="Process Illumina PCR Amplicon Fastq files to count barcode frequencies. Must have blastn and dada2 (R Bioconductor  package) installed to run. Make sure there are no spaces in any file names or directory paths, the program will not work otherwise. Make sure that files are already split by their illumina indices (N700 / S500 index). \n\nGenerated Files:\n\nnumReadsFoundPerSample: One file per input fastq file, it details the assignment of each read to a combination of inline indices if they exist, and the subsequent filtering of reads. The file has 2 columns, the first being a unique identifier for the fastq file and inline index combination identified, and the second being an array of 6 numbers binning the reads into the following categories: \n\t1. correct reads used for subsequent mapping. \n\t2. There are too many Ns in the read.\n\t3. UMIs have been requested and not identified in the read/\n\t4. There is no barcode found in the read.\n\t5. The combination of indices do not match a sample specified in the sampleFile.\n\t6. A second check for finding a valid barcode in the read.\n\n For each sample in SampleFile with at least one barcode found a number of files are generated.\n R1(R2).fastq - raw (possibly truncated depending on the readLength parameter) reads associated with this sample\n barcode.fastq - the portion of the reads associated with all barcode sequences concatenated together, in the same order as the R1/R2.fastq files\n UMISeqs.tab - tab delmited UMI sequences if they exist and are being used, in the same order as the R1/R2.fastq files.\n readBarcodeID.txt - the ID number of the barcode in the clusteredBCs.fasta file that each read was mapped to, in the same order as the R1/R2.fastq files.\nbarcodeCalls.tab - Count of each barcode in the sample, removing UMI duplicates if asked for. Line 1 contains the counts for barcode 1 (defined in clusteredBCs.fasta), line 2 for barcode 2 etc.\n\nallBarcodeCalls.tab - tab delimited concatenation of all of the barcodeCalls.tab files, with a header row identifying which column comes from which sample.")
+cmdLineArgParser = argparse.ArgumentParser(description="Process Illumina PCR Amplicon Fastq files to count barcode frequencies. Must have blastn and dada2 (R Bioconductor  package) installed to run. Make sure there are no spaces in any file names or directory paths, the program will not work otherwise. Make sure that files are already split by their illumina indices (N700 / S500 index). This code will not function if there are multiple barcodes or internal multiplexing barcodes within a single read. Please use the readLength flag to solve this issue. \n\nGenerated Files:\n\nnumReadsFoundPerSample: One file per input fastq file, it details the assignment of each read to a combination of inline indices if they exist, and the subsequent filtering of reads. The file has 2 columns, the first being a unique identifier for the fastq file and inline index combination identified, and the second being an array of 6 numbers binning the reads into the following categories: \n\t1. correct reads used for subsequent mapping. \n\t2. There are too many Ns in the read.\n\t3. UMIs have been requested and not identified in the read/\n\t4. There is no barcode found in the read.\n\t5. The combination of indices do not match a sample specified in the sampleFile.\n\t6. A second check for finding a valid barcode in the read.\n\n For each sample in SampleFile with at least one barcode found a number of files are generated.\n R1(R2).fastq - raw (possibly truncated depending on the readLength parameter) reads associated with this sample\n barcode.fastq - the portion of the reads associated with all barcode sequences concatenated together, in the same order as the R1/R2.fastq files\n UMISeqs.tab - tab delmited UMI sequences if they exist and are being used, in the same order as the R1/R2.fastq files.\n readBarcodeID.txt - the ID number of the barcode in the clusteredBCs.fasta file that each read was mapped to, in the same order as the R1/R2.fastq files.\nbarcodeCalls.tab - Count of each barcode in the sample, removing UMI duplicates if asked for. Line 1 contains the counts for barcode 1 (defined in clusteredBCs.fasta), line 2 for barcode 2 etc.\n\nallBarcodeCalls.tab - tab delimited concatenation of all of the barcodeCalls.tab files, with a header row identifying which column comes from which sample.")
 cmdLineArgParser.add_argument("-fastqDir", dest="fastqDir", help="directory location of fastq files",required=True)
 cmdLineArgParser.add_argument("-outputDir", dest="outputDir", help="location of output directory",required=True)
 cmdLineArgParser.add_argument("-templateSeq", dest="templateSeqFile", help="Template sequence of amplicon locus. This file contains a single line with standard DNA bases. UMI (unique molecular identifier) sequences are coded as U, multiplexing indices are coded as D and barcode loci coded as X. If these features have different lengths between samples, define the template using the longest possible length of each feature. Every feature annotated must be covered by the sequencing data, and no feature can span the exact middle of the template sequence when using paired end data.",required=True)
@@ -129,30 +126,6 @@ def file_len(fname):
 ## Print to std error
 def eprint(*args, **kwargs):
 	print(*args, file=sys.stderr, **kwargs)
-
-	
-def getConnectedNodes(inputGraph, counterMap, startNode, previousNodeMap):
-	curHighestCount = 0
-	curHighestCountNode = -1
-	#print("Starting recursion with "+str(startNode))
-	#print(inputGraph[startNode])
-	#print(previousNodeMap)
-	if(startNode not in previousNodeMap):
-		previousNodeMap[startNode] = 1
-	for node in inputGraph[startNode]:
-		if node in previousNodeMap or node == startNode:
-			continue
-		if counterMap[node] > curHighestCount:
-			curHighestCountNode = node
-			curHighestCount = counterMap[node]
-		previousNodeMap[node] = 1
-		[tempHighestCount, tempHighestNode, tempPreviousNodeMap] = getConnectedNodes(inputGraph, counterMap, node, previousNodeMap)
-		previousNodeMap = tempPreviousNodeMap
-		if tempHighestCount > curHighestCount:
-			curHighestCountNode = curHighestCountNode
-			curHighestCount = tempHighestCount
-		
-	return [curHighestCount, curHighestCountNode, previousNodeMap]
 	
 ## Return the blast hit with lowest e value. Requires input in outfmt6 format, output is an array with the columns separated as strings. 
 def getBestBlastMatch(blastOutputLocal):
