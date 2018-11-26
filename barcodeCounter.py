@@ -777,6 +777,19 @@ def mapBarcodes(mySamp):
 	#only run on this sample if the output file doesn't exist or flag has been set
 	indexString = mySamp
 	if (os.path.isfile(args.outputDir+indexString+"_barcode.fastq") and (not os.path.isfile(args.outputDir+indexString+"_readBarcodeID_bowtie2.txt") or args.remapBarcodes)):
+	
+		#make a dictionary to map barcode names in the barcode list fasta file to consecutive numbers for indexing in a vector.
+		BCNameToIdxDict = {}
+		IdxToBCNameDict = {}
+		with open(args.barcodeListFile,"r") as infile:
+			counter = 0
+			for record in SeqIO.parse(infile,"fasta"):
+				if(record.id in BCNameToIdxDict): #we have found a duplicate entry in the barcode list. quit!
+					eprint("Duplicate entry "+record.id+" found in input barcode list!")
+					sys.exit(1)
+				BCNameToIdxDict[record.id]=counter
+				counter +=1
+		
 		bcFastqFile = args.outputDir+indexString+"_barcode.fastq"
 		bcSamFile = args.outputDir+indexString+"_barcode.sam"
 		bcIDFile = args.outputDir+indexString+"_readBarcodeID_bowtie2.txt"
@@ -800,7 +813,7 @@ def mapBarcodes(mySamp):
 		
 		#for each read bc / umi pair
 		for bcID, UMIstring, mapQ in zip(bcIDFileHandle, UMIFileHandle, mapQFileHandle):
-			bcID = bcID.strip()
+			bcID = BCNameToIdxDict[bcID.strip()] #get the internal index corresponding to the matched barcode
 			mapQ = mapQ.strip()
 			if(bcID == "*" or bcID == "" or mapQ == "*" or int(mapQ) <= 20):
 				totalUnmappedReads = totalUnmappedReads + 1
