@@ -782,7 +782,7 @@ def mapBarcodes(mySamp):
 		BCNameToIdxDict = {}
 		IdxToBCNameDict = {}
 		with open(args.barcodeListFile,"r") as infile:
-			counter = 0
+			counter = 1
 			for record in SeqIO.parse(infile,"fasta"):
 				if(record.id in BCNameToIdxDict): #we have found a duplicate entry in the barcode list. quit!
 					eprint("Duplicate entry "+record.id+" found in input barcode list!")
