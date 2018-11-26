@@ -78,9 +78,7 @@ fileBufferSize = 10000 #make sure we aren't constantly accessing the disk but sm
 readsPerSampleForErrors = 10000
 
 #Blast parameters
-multiplexBCsBlastParams =  ["-word_size", "6","-outfmt","6","-evalue","1E-2"]
 constantRegionsBlastParams = ["-word_size", "6","-outfmt","6","-evalue","1E0"]
-BCRegionsBlastParams = ["-word_size", "6","-outfmt","6","-evalue","1E-4"]
 
 ###########################################################################
 ## Import arguments and define help output
