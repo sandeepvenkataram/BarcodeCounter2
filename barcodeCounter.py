@@ -108,6 +108,8 @@ cmdLineArgParser.add_argument("-remapBarcodes", dest="remapBarcodes", action="st
 #cmdLineArgParser.add_argument("-rebarcoding", dest="rebarcodingFile", help="File defining timepoints within each experiment when new barcodes were introduced. This feature is not currently implemented")
 
 args = cmdLineArgParser.parse_args()
+#change directory so that temp files are made in outputdir
+os.chdir(args.outputDir)
 
 ###########################################################################
 ## Utility functions
@@ -347,11 +349,15 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 					
 				if(templateSeqArray[readNum][i]=="U"):#extract UMI sequences if any			
 					UMIseq = readSeqRecordList[readID][readNum].seq[start:end]
+					if(readID>0): # reverse complement if coming from 2nd read to keep same orientation between reads
+						UNIseq = UMIseq.reverse_complement()
 					identifiedUMISequences.append(UMIseq)
 					if(len(UMIseq)==0 and args.UMI):
 						flagged = 2
 				if(templateSeqArray[readNum][i]=="X"):#extract coordinates of any BC region that exist
 					mybc = readSeqRecordList[readID][readNum][start:end]
+					if(readID>0): # reverse complement if coming from 2nd read to keep same orientation between reads
+						mybc = mybc.reverse_complement()
 					identifiedBCSeqRecords.append(mybc)
 					if(len(mybc.seq)==0):
 						flagged = 1
