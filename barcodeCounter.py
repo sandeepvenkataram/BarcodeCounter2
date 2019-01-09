@@ -109,7 +109,7 @@ cmdLineArgParser.add_argument("-remapBarcodes", dest="remapBarcodes", action="st
 
 args = cmdLineArgParser.parse_args()
 #change directory so that temp files are made in outputdir
-os.chdir(args.outputDir)
+
 
 ###########################################################################
 ## Utility functions
@@ -198,7 +198,7 @@ def createConstRegionFasta():
 			if(len(seq)>1):
 				seqNumber = seqNumber+1
 				filePrefix = "const_region_"+str(readNumber)+"_"+str(seqNumber)
-				fileString = "."+filePrefix+".fasta"
+				fileString = args.outputDir+"."+filePrefix+".fasta"
 				with open(fileString,"w") as outfile:
 					outfile.write(">const_region_"+str(readNumber)+"_"+str(seqNumber)+"\n")
 					outfile.write(seq+"\n")
@@ -235,7 +235,7 @@ def createConstRegionFasta():
 
 def extractRegionsFromFastq(readSeqRecordList, prefixName):
 	# make a fasta file from all reads we are processing and blast against database of all index and constant regions
-	readSeqFileName = "."+prefixName+"_readSeq.fasta"
+	readSeqFileName = args.outputDir+"."+prefixName+"_readSeq.fasta"
 	with open(readSeqFileName,"w") as outfasta:
 		for readID in range(0,len(readSeqRecordList)):
 			for i in range(0,len(templateSeqArray)):
