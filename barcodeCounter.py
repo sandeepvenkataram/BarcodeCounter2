@@ -817,12 +817,13 @@ def mapBarcodes(mySamp):
 		
 		#for each read bc / umi pair
 		for bcID, UMIstring, mapQ in zip(bcIDFileHandle, UMIFileHandle, mapQFileHandle):
-			bcID = BCNameToIdxDict[bcID.strip()] #get the internal index corresponding to the matched barcode
+			bcID = bcID.strip()
 			mapQ = mapQ.strip()
 			if(bcID == "*" or bcID == "" or mapQ == "*" or int(mapQ) <= 20):
 				totalUnmappedReads = totalUnmappedReads + 1
 				continue
 			else:
+				bcID = BCNameToIdxDict[bcID] #get the internal index corresponding to the matched barcode
 				mykey = bcID+"\t"+UMIstring
 				if mykey not in BCUMIMap or not args.UMI:
 					BCUMIMap[mykey]=1
