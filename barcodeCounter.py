@@ -824,7 +824,7 @@ def mapBarcodes(mySamp):
 				continue
 			else:
 				bcID = BCNameToIdxDict[bcID] #get the internal index corresponding to the matched barcode
-				mykey = bcID+"\t"+UMIstring
+				mykey = str(bcID)+"\t"+UMIstring
 				if mykey not in BCUMIMap or not args.UMI:
 					BCUMIMap[mykey]=1
 					BCCountList[int(bcID)-1] = BCCountList[int(bcID)-1] + 1
