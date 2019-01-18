@@ -349,14 +349,14 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 					
 				if(templateSeqArray[readNum][i]=="U"):#extract UMI sequences if any			
 					UMIseq = readSeqRecordList[readID][readNum].seq[start:end]
-					if(readID>0): # reverse complement if coming from 2nd read to keep same orientation between reads
+					if(readNum>0): # reverse complement if coming from 2nd read to keep same orientation between reads
 						UNIseq = UMIseq.reverse_complement()
 					identifiedUMISequences.append(UMIseq)
 					if(len(UMIseq)==0 and args.UMI):
 						flagged = 2
 				if(templateSeqArray[readNum][i]=="X"):#extract coordinates of any BC region that exist
 					mybc = readSeqRecordList[readID][readNum][start:end]
-					if(readID>0): # reverse complement if coming from 2nd read to keep same orientation between reads
+					if(readNum>0): # reverse complement if coming from 2nd read to keep same orientation between reads
 						mybc = mybc.reverse_complement()
 					identifiedBCSeqRecords.append(mybc)
 					if(len(mybc.seq)==0):
@@ -545,7 +545,7 @@ def demultiplexFastq(fastqPair):
 		for fwdRec in SeqIO.parse(fwdFastqHandle,"fastq"): 
 			fwdRec = fwdRec[0:args.readLength]
 			readCounter = readCounter + 1
-			readList.append([fwdRec])#.reverse_complement(name=True,description=True,id=True,annotations=True)]) #reverse complement the reverse read to match with the template sequence
+			readList.append([fwdRec])
 			if(readCounter % fileBufferSize != 0): #if we are not at file buffer size, do not run parser since file io is super expensive and we want to minimize it
 				continue
 			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, None) #process buffered reads using helper method
