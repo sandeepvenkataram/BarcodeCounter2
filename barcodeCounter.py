@@ -261,7 +261,6 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 		identifiedIndexBCs = []
 		identifiedUMISequences = []
 		identifiedBCSeqRecords = []
-		flagged = 0
 		fwdRecord = readSeqRecordList[readID][0]
 		revRecord = None
 		if args.pairedEnd:
@@ -351,43 +350,16 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 					UMIseq = readSeqRecordList[readID][readNum].seq[start:end]
 					if(readNum>0): # reverse complement if coming from 2nd read to keep same orientation between reads
 						UNIseq = UMIseq.reverse_complement()
-					identifiedUMISequences.append(UMIseq)
-					if(len(UMIseq)==0 and args.UMI):
-						flagged = 2
+					
+					if(len(UMIseq)>0 and args.UMI):
+						identifiedUMISequences.append(UMIseq)
 				if(templateSeqArray[readNum][i]=="X"):#extract coordinates of any BC region that exist
 					mybc = readSeqRecordList[readID][readNum][start:end]
 					if(readNum>0): # reverse complement if coming from 2nd read to keep same orientation between reads
 						mybc = mybc.reverse_complement()
-					identifiedBCSeqRecords.append(mybc)
-					if(len(mybc.seq)==0):
-						flagged = 1
-			
-				if(flagged > 0 and 0==1): #print statements for bad reads, turned off for now
-					lock.acquire()
-					if(flagged == 1):
-						print("BC has seq of 0 length!")
-					if(flagged == 2):
-						print("UMI has seq of 0 length!")
-					print("Read num is: ", readNum)
-					print(templateSeqArray[readNum])
-					print(readSeqRecordList[readID][readNum].seq)
-					print(start)
-					print(end)
-					print(startingCoordinates)
-					print("\n".join(readBlastResult)+"\n")
-					lock.release()
-					sys.exit(0)
-			if(1==0 and readID < 20):
-				print("Processing a read from "+prefixName+"\t"+str(readID)+"\t"+str(readNum))
-				print("\n".join(readBlastResult))
-				print(templateSeqArray[readNum])
-				print(readSeqRecordList[readID][readNum].seq+"\n"+str(startingCoordinates))
-				print("UMIS:\n")
-				print("\t".join(str(x) for x in identifiedUMISequences))
-				print("BCs:\n")
-				for rec in identifiedBCSeqRecords:
-					print(rec)
-				print(str(identifiedIndexBCs))
+					if(len(mybc.seq)>0):
+						identifiedBCSeqRecords.append(mybc)
+		
 		returnVal = [identifiedBCSeqRecords,identifiedUMISequences,identifiedIndexBCs, fwdRecord, revRecord]
 		finalReturnVal.append(returnVal)
 	return(finalReturnVal)
@@ -733,7 +705,7 @@ def clusterBarcodesDNAClust():
 	readCounterMap = {}
 	with open(dedupFileName,"w") as outfileHandle, open(readCountFileName,"w") as readCountFileHandle:
 		for line in uniqueBCLines.keys():
-			if 'N' not in line and uniqueBCLines[line] > 3: #remove any reads with Ns in it (< .5% of reads) or sequences with too few reads
+			if 'N' not in line and uniqueBCLines[line] > 3 and len(line)>0: #remove any reads with Ns in it (< .5% of reads) or sequences with too few reads or sequences with barcodes of 0 length (if they somehow got missed)
 				outfileHandle.write(">"+str(readCounter)+"\n")
 				outfileHandle.write(line+"\n")
 				BCClusterListMap[readCounter] = []
