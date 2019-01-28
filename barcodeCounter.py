@@ -714,9 +714,8 @@ def clusterBarcodesDNAClust():
 				readCounter +=1
 			
 	# use DNAclust to cluster reads
-	callFunction = [args.DNAclustPATH+"dnaclust", "-s",".95","--approximate-filter","-k","6","-t",str(args.numThreads),"-i",dedupFileName]
-	with open(dnaclustOutputFileName,"w") as outfile:
-		subprocess.call(callFunction,shell=True,stdout=outfile)
+	callFunction = [args.DNAclustPATH+'dnaclust', '-s','.95','--approximate-filter','-k','6','-t',str(args.numThreads),'-i',dedupFileName,'>'+dnaclustOutputFileName]
+	os.system(" ".join(callFunction))
 	
 	# create final barcode fasta file using the centers of the clusters found by DNAclust
 	bcsToUse = []
