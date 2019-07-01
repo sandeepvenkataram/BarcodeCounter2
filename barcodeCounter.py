@@ -772,7 +772,7 @@ def clusterBarcodesDNAClust():
 def mapBarcodes(mySamp):
 	#only run on this sample if the output file doesn't exist or flag has been set
 	indexString = mySamp
-	if (os.path.isfile(args.outputDir+indexString+"_barcode.fastq") and (not os.path.isfile(args.outputDir+indexString+"_readBarcodeID_bowtie2.txt") or args.remapBarcodes)):
+	if (os.path.isfile(args.outputDir+indexString+"_barcode.fastq") and (not os.path.isfile(args.outputDir+indexString+"_readBarcodeID.txt") or args.remapBarcodes)):
 	
 		#make a dictionary to map barcode names in the barcode list fasta file to consecutive numbers for indexing in a vector.
 		BCNameToIdxDict = {}
@@ -788,8 +788,8 @@ def mapBarcodes(mySamp):
 		
 		bcFastqFile = args.outputDir+indexString+"_barcode.fastq"
 		bcSamFile = args.outputDir+indexString+"_barcode.sam"
-		bcIDFile = args.outputDir+indexString+"_readBarcodeID_bowtie2.txt"
-		mapQualFile = args.outputDir+indexString+"_readMappingQuality_bowtie2.txt"
+		bcIDFile = args.outputDir+indexString+"_readBarcodeID.txt"
+		mapQualFile = args.outputDir+indexString+"_readMappingQuality.txt"
 		
 		if(args.useBowtie2): #bowtie2 call if flagged
 			subprocess.call([args.bowtie2Path+"bowtie2","-L 10","-q","--very-sensitive-local","-x "+args.barcodeListFile,"-U"+bcFastqFile,"-S"+bcSamFile])
@@ -831,13 +831,13 @@ def mapBarcodes(mySamp):
 		UMIFileHandle.close()
 		
 		#write total count data to file
-		with open(args.outputDir+indexString+"_barcodeCounts_bowtie2.tab","w") as outFileHandle:
+		with open(args.outputDir+indexString+"_barcodeCounts.tab","w") as outFileHandle:
 			for countVal in BCCountList:
 				outFileHandle.write(str(countVal)+"\n")
-		with open(args.outputDir+indexString+"_numUnmappedReads_bowtie2.txt","w") as outFileHandle:
+		with open(args.outputDir+indexString+"_numUnmappedReads.txt","w") as outFileHandle:
 			outFileHandle.write(str(totalUnmappedReads))
 		if(args.UMI):
-			with open(args.outputDir+indexString+"_barcodeUMIDupCounts_bowtie2.tab","w") as outFileHandle:
+			with open(args.outputDir+indexString+"_barcodeUMIDupCounts.tab","w") as outFileHandle:
 				for countVal in BCUMIDupCountList:
 					outFileHandle.write(str(countVal)+"\n")
 
