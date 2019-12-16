@@ -126,18 +126,7 @@ def init(l):
 	global lock
 	lock = l
 
-	
-	
-## Calculate the number of lines in the file
 
-def file_len(fname):
-    with open(fname) as f:
-        for i, l in enumerate(f):
-            pass
-    return i + 1
-
-
-	
 ## Print to std error
 
 def eprint(*args, **kwargs):
@@ -220,7 +209,7 @@ def createConstRegionFasta():
 	
 	if(args.multiBCFastaFile != None):
 		filenames.append(args.multiBCFastaFile)
-	with open(allConstRegionsFileName, 'w') as outfile:
+	with open(args.outputDir+allConstRegionsFileName, 'w') as outfile:
 		for fname in filenames:
 			with open(fname) as infile:
 				seqName = ""
@@ -230,7 +219,7 @@ def createConstRegionFasta():
 					else:
 						templateSeqLengthsDict[seqName.strip()]=len(line.strip())
 					outfile.write(line)
-	blastCall = [args.blastPATH+"makeblastdb","-in",allConstRegionsFileName,"-dbtype","nucl"]
+	blastCall = [args.blastPATH+"makeblastdb","-in",args.outputDir+allConstRegionsFileName,"-dbtype","nucl"]
 	subprocess.call(blastCall)
 	
 
@@ -247,7 +236,7 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 				outfasta.write(str(readSeqRecordList[readID][i].seq)+"\n")
 	
 	# blast reads against constant and multiplexing index sequences
-	blastCommand = [args.blastPATH+"blastn","-query",readSeqFileName,"-db",allConstRegionsFileName]
+	blastCommand = [args.blastPATH+"blastn","-query",readSeqFileName,"-db",args.outputDir+allConstRegionsFileName]
 	blastCommand.extend(constantRegionsBlastParams)
 	blastResult = subprocess.check_output(blastCommand).decode('ascii').rstrip().split("\n") 
 	finalReturnVal = []
@@ -353,8 +342,6 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 					
 				if(templateSeqArray[readNum][i]=="U"):#extract UMI sequences if any			
 					UMIseq = readSeqRecordList[readID][readNum].seq[start:end]
-					if(readNum>0): # reverse complement if coming from 2nd read to keep same orientation between reads
-						UNIseq = UMIseq.reverse_complement()
 					
 					if(len(UMIseq)>0 and args.UMI):
 						identifiedUMISequences.append(UMIseq)
@@ -365,8 +352,6 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 						end = end - int(args.barcode3PrimeTrimLength)
 					
 					mybc = readSeqRecordList[readID][readNum][start:end]
-					if(readNum>0): # reverse complement if coming from 2nd read to keep same orientation between reads
-						mybc = mybc.reverse_complement()
 					if(len(mybc.seq)>0):
 						identifiedBCSeqRecords.append(mybc)
 		
@@ -501,11 +486,11 @@ def demultiplexFastq(fastqPair):
 		if(fastqPair.RevFastq.endswith("gz")):
 			revFastqHandle = gzip.open(fastqPair.RevFastq, "rt")
 		
-		for fwdRec, revRec in zip(SeqIO.parse(fwdFastqHandle,"fastq"), SeqIO.parse(revFastqHandle,"fastq")): #for each read, WE MAY WANT TO REPLACE THIS WITH GENERALFASTQITERATOR FOR PERFORMANCE! Zip should have OK performance, so that shouldn't be an issue
+		for fwdRec, revRec in zip(SeqIO.parse(fwdFastqHandle,"fastq"), SeqIO.parse(revFastqHandle,"fastq")): #for each read
 			readCounter = readCounter + 1
 			fwdRec = fwdRec[0:args.readLength]
 			revRec = revRec[0:args.readLength]
-			readList.append([fwdRec,revRec])
+			readList.append([fwdRec,revRec.reverse_complement()])
 			if(readCounter % fileBufferSize != 0): #if we are not at file buffer size, do not run parser since file io is super expensive and we want to minimize it
 				continue
 			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, badRevReadsHandle) #process buffered reads using helper method
@@ -773,14 +758,15 @@ def mapBarcodes(mySamp):
 		#make a dictionary to map barcode names in the barcode list fasta file to consecutive numbers for indexing in a vector.
 		BCNameToIdxDict = {}
 		IdxToBCNameDict = {}
+		totalNumBCs = 1
 		with open(args.barcodeListFile,"r") as infile:
-			counter = 1
+			
 			for record in SeqIO.parse(infile,"fasta"):
 				if(record.id in BCNameToIdxDict): #we have found a duplicate entry in the barcode list. quit!
 					eprint("Duplicate entry "+record.id+" found in input barcode list!")
 					sys.exit(1)
-				BCNameToIdxDict[record.id]=counter
-				counter +=1
+				BCNameToIdxDict[record.id]=totalNumBCs
+				totalNumBCs +=1
 		
 		bcFastqFile = args.outputDir+indexString+"_barcode.fastq"
 		bcSamFile = args.outputDir+indexString+"_barcode.sam"
@@ -800,8 +786,8 @@ def mapBarcodes(mySamp):
 			subprocess.call("grep -v '^@' "+bcSamFile+" | cut -f 5",stdout=outfile, shell=True)
 		
 		BCUMIMap = {}
-		BCCountList = [0]*int(file_len(args.barcodeListFile)/2)
-		BCUMIDupCountList = [0]*int(file_len(args.barcodeListFile)/2)
+		BCCountList = [0]*int(totalNumBCs-1)
+		BCUMIDupCountList = [0]*int(totalNumBCs-1)
 		totalUnmappedReads = 0
 		bcIDFileHandle = open(bcIDFile,"r")
 		mapQFileHandle = open(mapQualFile,"r")
@@ -848,6 +834,20 @@ def generateFinalTables():
 	readers = [csv.reader(f, delimiter=',') for f in handles]
 	filenames2 = ["BCID"]
 	filenames2.extend(filenames)
+	
+	BCNameToIdxDict = {}
+	IdxToBCNameDict = {}
+	with open(args.barcodeListFile,"r") as infile:
+		counter = 1
+		for record in SeqIO.parse(infile,"fasta"):
+			if(record.id in BCNameToIdxDict): #we have found a duplicate entry in the barcode list. quit!
+				eprint("Duplicate entry "+record.id+" found in input barcode list!")
+				sys.exit(1)
+			BCNameToIdxDict[record.id]=counter
+			IdxToBCNameDict[counter] = record.id
+			counter +=1
+	
+	
 	with  open(args.outputDir+"allBarcodeCounts.tab", 'w') as h:
 		writer = csv.writer(h, delimiter='\t', lineterminator='\n', )
 		writer.writerow(filenames2)
@@ -916,8 +916,8 @@ if args.barcodeListFile==None:
 
 
 ## Make database from barcode fasta file for mapping
-  
-subprocess.call([args.bowtie2PATH+"bowtie2-build",args.barcodeListFile,args.barcodeListFile])
+if(args.useBowtie2):
+	subprocess.call([args.bowtie2PATH+"bowtie2-build",args.barcodeListFile,args.barcodeListFile])
 
 
 ## Map barcodes using bowtie2 with multiprocessing
