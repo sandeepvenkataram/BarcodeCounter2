@@ -714,7 +714,6 @@ def mapBarcodes(mySamp):
 	
 		#make a dictionary to map barcode names in the barcode list fasta file to consecutive numbers for indexing in a vector.
 		BCNameToIdxDict = {}
-		IdxToBCNameDict = {}
 		totalNumBCs = 1
 		with open(args.barcodeListFile,"r") as infile:
 			
