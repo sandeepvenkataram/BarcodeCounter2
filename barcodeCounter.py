@@ -639,50 +639,7 @@ def demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle,
 			SampleSplitFastqFileHandleREV.close()
 	return indexCounter
 
-	
-## Do clustering across all samples using Dada2. 
-#  WARNING: This is really slow, and probably won't work with large numbers of unique reads
-#  This is currently not available without modifying the code
-  
-# def clusterBarcodesDada2():
-	# ##
-	# ## concat all barcode fastq files by experiment into a single file for clustering
-	# ##
-	# allFiles = glob.glob(args.outputDir+"*_barcode.fastq")
-	# totalNumLines = 0
-	# with open(args.outputDir+"allSamplesConcat.fastq","w") as outfile:
-		# for fname in allFiles:
-			# with open(fname) as infile:
-				# for line in infile:
-					# outfile.write(line)
-					# totalNumLines += 1
-	# totalNumReads = int(totalNumLines / 4)
-	# #subsample 200k reads to make the dada2 error model, since this takes forever if you use the entire dataset
-	# #code from https://pythonforbiologists.com/randomly-sampling-reads-from-a-fastq-file/
-	# numberToSample = 200000
-	# recordsToKeep = set(random.sample(range(totalNumReads + 1), numberToSample))
-	# readNum = 0
-	# with open(args.outputDir+"allSamplesConcat.fastq") as input, open(args.outputDir+"allSamplesConcatForErrors.fastq", "w") as output:
-		# for line1 in input:
-			# line2 = input.readline()
-			# line3 = input.readline()
-			# line4 = input.readline()
-			# if readNum in recordsToKeep:
-				# output.write(line1)
-				# output.write(line2)
-				# output.write(line3)
-				# output.write(line4)
-			# readNum += 1
-	
-	# #do the clustering with dada2 via r script, generates a fasta file of barcodes in output directory
-	# callFunction = [args.RscriptPATH,os.path.dirname(sys.argv[0]) + "/clusterWithDada2.R",args.outputDir+"allSamplesConcat.fastq",args.outputDir+"allSamplesConcatForErrors.fastq", args.outputDir]
-	# subprocess.call(callFunction)
-	# args.barcodeListFile = args.outputDir+"clusteredBCsDada2.fasta"
 
-	
-## Do clustering across all samples using DNAClust. This is the default. 
-
-	
 def clusterBarcodesDNAClust():
 	##
 	## concat all barcode fastq files by experiment into a single file for clustering, remove those sequences that appear less than 3 times
@@ -853,7 +810,7 @@ def generateFinalTables():
 		writer.writerow(filenames2)
 		i = 1
 		for rows in IT.zip_longest(*readers, fillvalue=['']*2):
-			combined_row = [i]
+			combined_row = [IdxToBCNameDict[i]]
 			for row in rows:
 				row = row[:1] # select the columns you want
 				if len(row) == 1:
