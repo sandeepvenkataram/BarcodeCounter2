@@ -98,12 +98,12 @@ cmdLineArgParser.add_argument("-barcodeList", dest="barcodeListFile", help="Opti
 cmdLineArgParser.add_argument("-barcode5PrimeTrimLength", dest="barcode5PrimeTrimLength", default=0,  help="Number of bp to trim from the 5' end of each barcode. ")
 cmdLineArgParser.add_argument("-barcode3PrimeTrimLength", dest="barcode3PrimeTrimLength", default=0,  help="Number of bp to trim from the 3' end of each barcode. ")
 cmdLineArgParser.add_argument("-bcNGapLength", dest="bcNGapLength", default=0,  help="Number of bp of Ns to put between barcodes from forward and reverse reads. Use if the sequence is not covering the entire barcode and you you have provided the list of valid barcodes using the barcodeList argument.")
-cmdLineArgParser.add_argument("-blastPATH", dest="blastPATH", help="BLAST installation directory if it is not in the PATH already", default="")
+cmdLineArgParser.add_argument("-blastPath", dest="blastPath", help="BLAST installation directory if it is not in the Path already", default="")
 cmdLineArgParser.add_argument("-useBowtie2", dest="useBowtie2", help="Flag to use Bowtie2 instead of the default BWA mem for barcode mapping. ", action="store_true")
-cmdLineArgParser.add_argument("-bowtie2Path", dest="bowtie2Path", help="Bowtie2 installation directory if it is not in the PATH already", default="")
-cmdLineArgParser.add_argument("-bwaPath", dest="bwaPath", help="BWA installation directory if it is not in the PATH already", default="")
+cmdLineArgParser.add_argument("-bowtie2Path", dest="bowtie2Path", help="Bowtie2 installation directory if it is not in the Path already", default="")
+cmdLineArgParser.add_argument("-bwaPath", dest="bwaPath", help="BWA installation directory if it is not in the Path already", default="")
 cmdLineArgParser.add_argument("-demultiplexOnly", dest="demultiplexOnly", action="store_true",  help="Use flag if you want to only split the raw fastq files and not continue with the rest of the barcode counting. This is useful when distributing demultiplexing across several machines, i.e. in a cluster.")
-cmdLineArgParser.add_argument("-DNAclustPATH", dest="DNAclustPATH", help="DNAclust installation directory if it is not in the PATH already", default="")
+cmdLineArgParser.add_argument("-DNAclustPath", dest="DNAclustPath", help="DNAclust installation directory if it is not in the Path already", default="")
 cmdLineArgParser.add_argument("-numThreads", dest="numThreads", default=1,  help="Number of threads to be used for computation.")
 cmdLineArgParser.add_argument("-pairedEnd", dest="pairedEnd", action="store_true",  help="Use if sequencing data is paired end")
 cmdLineArgParser.add_argument("-readLength", dest="readLength", default=100,  help="Expected length of each read from sequencing machine. Default = 100. Reduce this number from the true read length if necessary such that non-constant regions of the barcode locus are not shared between reads. This does not modify the input fastq files, but effectively truncates reads before processing")
@@ -198,7 +198,7 @@ def createConstRegionFasta():
 				constRegionFilenameArray.append(fileString)
 				constRegionNameArray.append(filePrefix)
 				filenames.append(fileString)
-				subprocess.call([args.blastPATH+"makeblastdb","-in",fileString,"-dbtype","nucl"])
+				subprocess.call([args.blastPath+"makeblastdb","-in",fileString,"-dbtype","nucl"])
 			else:
 				constRegionFilenameArray.append(None)
 				constRegionNameArray.append(None)
@@ -219,7 +219,7 @@ def createConstRegionFasta():
 					else:
 						templateSeqLengthsDict[seqName.strip()]=len(line.strip())
 					outfile.write(line)
-	blastCall = [args.blastPATH+"makeblastdb","-in",args.outputDir+allConstRegionsFileName,"-dbtype","nucl"]
+	blastCall = [args.blastPath+"makeblastdb","-in",args.outputDir+allConstRegionsFileName,"-dbtype","nucl"]
 	subprocess.call(blastCall)
 	
 
@@ -236,7 +236,7 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 				outfasta.write(str(readSeqRecordList[readID][i].seq)+"\n")
 	
 	# blast reads against constant and multiplexing index sequences
-	blastCommand = [args.blastPATH+"blastn","-query",readSeqFileName,"-db",args.outputDir+allConstRegionsFileName]
+	blastCommand = [args.blastPath+"blastn","-query",readSeqFileName,"-db",args.outputDir+allConstRegionsFileName]
 	blastCommand.extend(constantRegionsBlastParams)
 	blastResult = subprocess.check_output(blastCommand).decode('ascii').rstrip().split("\n") 
 	finalReturnVal = []
@@ -448,6 +448,7 @@ def identifyUsedFastqFiles():
 		myfwd = None
 		myrev = None
 		if(len(readFiles2)==0 or (len(readFiles2)==1 and args.pairedEnd) or (len(readFiles2)==2 and not args.pairedEnd) or len(readFiles2)>2): #check that we found the expected number of fastq files (based on single or paired end data expected)
+			eprint(readFiles2)
 			eprint("Incorrect number of matching fastq files found for "+sample.FilePrefix)
 			sys.exit(1)
 		myfwd = readFiles2[0]
@@ -640,6 +641,8 @@ def demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle,
 	return indexCounter
 
 
+## Do clustering across all samples using DNAClust. This is the default. 
+
 def clusterBarcodesDNAClust():
 	##
 	## concat all barcode fastq files by experiment into a single file for clustering, remove those sequences that appear less than 3 times
@@ -673,7 +676,7 @@ def clusterBarcodesDNAClust():
 				readCounter +=1
 			
 	# use DNAclust to cluster reads
-	callFunction = [args.DNAclustPATH+'dnaclust', '-s','.95','--approximate-filter','-k','6','-t',str(args.numThreads),'-i',dedupFileName,'>'+dnaclustOutputFileName]
+	callFunction = [args.DNAclustPath+'dnaclust', '-s','.95','--approximate-filter','-k','6','-t',str(args.numThreads),'-i',dedupFileName,'>'+dnaclustOutputFileName]
 	os.system(" ".join(callFunction))
 	
 	# create final barcode fasta file using the centers of the clusters found by DNAclust
@@ -705,7 +708,7 @@ def clusterBarcodesDNAClust():
 	args.barcodeListFile = clusteredBCFileName
 
 
-## Map barcodes using bowtie2, multiprocessed code
+## Map barcodes using bwa(default) or bowtie2, multiprocessed code
   
 def mapBarcodes(mySamp):
 	#only run on this sample if the output file doesn't exist or flag has been set
@@ -873,8 +876,9 @@ if args.barcodeListFile==None:
 
 ## Make database from barcode fasta file for mapping
 if(args.useBowtie2):
-	subprocess.call([args.bowtie2PATH+"bowtie2-build",args.barcodeListFile,args.barcodeListFile])
-
+	subprocess.call([args.bowtie2Path+"bowtie2-build",args.barcodeListFile,args.barcodeListFile])
+else:
+	subprocess.call([args.bwaPath+"bwa","index",args.barcodeListFile])
 
 ## Map barcodes using bowtie2 with multiprocessing
 
