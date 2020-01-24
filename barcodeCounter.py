@@ -78,6 +78,7 @@ allConstRegionsFileName = "allCRs.fasta"
 maxNInReads = 3
 fileBufferSize = 10000 #make sure we aren't constantly accessing the disk but small enough to reasonably keep in memory
 readsPerSampleForErrors = 10000
+expectedBarcodeLength = 0
 
 #Blast parameters
 constantRegionsBlastParams = ["-word_size", "6","-outfmt","6","-evalue","1E0"]
@@ -421,6 +422,8 @@ def parseTemplateSeq():
 		templateArray.append(sequence[int(len(sequence)-args.readLength):(len(sequence)+1)])
 	else:
 		templateArray.append(sequence)
+		
+	expectedBarcodeLength = sequence.count("X")
 	#collapse non-constant features into single character and add to global variable
 	global templateSeqArray
 	for seq in templateArray:
@@ -663,15 +666,11 @@ def clusterBarcodesDNAClust():
 					uniqueBCLines[myseq] = 0
 				uniqueBCLines[myseq] += 1
 	readCounter = 1
-	BCClusterListMap = {}
-	readCounterMap = {}
 	with open(dedupFileName,"w") as outfileHandle, open(readCountFileName,"w") as readCountFileHandle:
 		for line in uniqueBCLines.keys():
-			if 'N' not in line and uniqueBCLines[line] > 3 and len(line)>0: #remove any reads with Ns in it (< .5% of reads) or sequences with too few reads or sequences with barcodes of 0 length (if they somehow got missed)
+			if 'N' not in line and uniqueBCLines[line] > 10 and len(line)>0 and len(line) <= int(1.5*expectedBCLength) : #remove any reads with Ns in it (< .5% of reads) or sequences with too few reads or sequences with barcodes of 0 length (if they somehow got missed) or sequences that are too long (more than 50% longer than the expected sequence length)
 				outfileHandle.write(">"+str(readCounter)+"\n")
 				outfileHandle.write(line+"\n")
-				BCClusterListMap[readCounter] = []
-				readCounterMap[readCounter] = uniqueBCLines[line]
 				readCountFileHandle.write(str(uniqueBCLines[line])+"\n")
 				readCounter +=1
 			
@@ -700,9 +699,10 @@ def clusterBarcodesDNAClust():
 			seqline = infile.readline()
 			seqline = seqline.strip()
 			if(curIndex == bcsToUse[bcsToUseIndex]):
+				bcsToUseIndex +=1
 				outfile.write(">"+str(bcsToUseIndex+1)+"\n")
 				outfile.write(seqline+"\n")
-				bcsToUseIndex +=1
+				
 			curIndex +=1	
 	
 	args.barcodeListFile = clusteredBCFileName
