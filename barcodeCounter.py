@@ -78,7 +78,7 @@ allConstRegionsFileName = "allCRs.fasta"
 maxNInReads = 3
 fileBufferSize = 10000 #make sure we aren't constantly accessing the disk but small enough to reasonably keep in memory
 readsPerSampleForErrors = 10000
-expectedBarcodeLength = 0
+expectedBCLength = 0
 
 #Blast parameters
 constantRegionsBlastParams = ["-word_size", "6","-outfmt","6","-evalue","1E0"]
@@ -107,7 +107,7 @@ cmdLineArgParser.add_argument("-demultiplexOnly", dest="demultiplexOnly", action
 cmdLineArgParser.add_argument("-DNAclustPath", dest="DNAclustPath", help="DNAclust installation directory if it is not in the Path already", default="")
 cmdLineArgParser.add_argument("-numThreads", dest="numThreads", default=1,  help="Number of threads to be used for computation.")
 cmdLineArgParser.add_argument("-pairedEnd", dest="pairedEnd", action="store_true",  help="Use if sequencing data is paired end")
-cmdLineArgParser.add_argument("-readLength", dest="readLength", default=100,  help="Expected length of each read from sequencing machine. Default = 100. Reduce this number from the true read length if necessary such that non-constant regions of the barcode locus are not shared between reads. This does not modify the input fastq files, but effectively truncates reads before processing")
+cmdLineArgParser.add_argument("-readLength", dest="readLength", default=100, type=int,  help="Expected length of each read from sequencing machine. Default = 100. Reduce this number from the true read length if necessary such that non-constant regions of the barcode locus are not shared between reads. This does not modify the input fastq files, but effectively truncates reads before processing")
 cmdLineArgParser.add_argument("-remapBarcodes", dest="remapBarcodes", action="store_true",  help="Set to True if you want to remap barcodes even if the files already exist")
 cmdLineArgParser.add_argument("-skipSplitFastq", dest="skipSplitFastq", action="store_true",  help="Use flag if you want to skip the splitting of the raw fastq files (i.e. if you have already done this and do not want to redo it).")
 cmdLineArgParser.add_argument("-useUMI", dest="UMI", action="store_true",  help="Use flag if you want to remove PCR duplicate reads using UMI data")
