@@ -864,9 +864,8 @@ parseSampleFile()
 createConstRegionFasta()
 
 ## Demultiplex data using multiprocessing if there are any to be demultiplexed
-
+lA = identifyUsedFastqFiles()
 if(len(usedFastqFiles)>0):
-	lA = identifyUsedFastqFiles()
 	with Pool(processes = int(args.numThreads), initializer = init, initargs = (lA,)) as pool:
 		pool.map(demultiplexFastq, usedFastqFiles)
 
