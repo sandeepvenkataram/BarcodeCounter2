@@ -67,6 +67,7 @@ sampleArray = []
 indexToSampleMap = {}
 templateSeqLengthsDict = {}
 templateSeqArray = [] #one to two inner arrays, describing the template corresponding to each read
+templateSeqLengthsArray = [] #one to two inner arrays, describing the lengths of each feature in the template seq array
 validFeatureTypes = {"X" : "BC", "D" : "multiplexBC", "U" : "UMI"}
 validFeatureCounts = {"X" : 0, "D" : 0, "U" : 0}
 usedFastqFiles = []
@@ -193,6 +194,7 @@ def parseTemplateSeq():
 	expectedBarcodeLength = sequence.count("X")
 	#collapse non-constant features into single character and add to global variable
 	global templateSeqArray
+	
 	for seq in templateArray:
 		seq = re.sub("D+","\tD\t",seq)
 		seq = re.sub("U+","\tU\t",seq)
@@ -203,7 +205,31 @@ def parseTemplateSeq():
 		seq = re.sub("^\t","",seq)
 		seq = re.sub("\t$","",seq)
 		templateSeqArray.append(seq.split("\t"))
-
+	
+	global templateSeqLengthsArray
+	for seqNum in range(0,len(templateArray)):
+		seq = templateArray[seqNum]
+		seqArray = templateSeqArray[seqNum]
+		seqLengthsArray = []
+		lastValidIdex = 0
+		for i in range(0,len(seqArray)):
+			if(not seqArray[i] in validFeatureCounts.keys()):
+				seqLengthsArray.append(-1)
+				continue
+			startIdex = -1
+			for j in range(lastValidIdex,len(seq)):
+				if seq[j] == seqArray[i] and startIdex == -1:
+					startIdex = j
+					continue
+				if(startIdex >= 0 and seq[j] != seqArray[i]):
+					seqLengthsArray.append(j-startIdex)
+					lastValidIdex = j
+					break
+				if(j==len(seq)-1):
+					seqLengthsArray.append(len(seq)-startIdex)
+					break
+		templateSeqLengthsArray.append(seqLengthsArray)
+	# print(templateArray)
 		
 ## Figure out which fastq files we are going to use, 
 #  Pair forward and reverse reads as necessary, assume they are in alphabetical order (R1 before R2)
@@ -578,6 +604,7 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 			prevSegmentStartingCoord = -1
 			reversedRead = False
 			firstIndex = -1
+			goodCoords = [0]*(len(templateSeqArray[readNum])+1)	
 			for i in range(0,len(templateSeqArray[readNum])): #for each feature in the template
 				if(templateSeqArray[readNum][i]=="D" or (templateSeqArray[readNum][i]!="U" and templateSeqArray[readNum][i]!="X")): #if this is an indexing barcode location or a constant region
 					myLocalHits = []
@@ -616,9 +643,12 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 							firstIndex = -2
 						startingCoordinates[i]=matchCoords[1]
 						startingCoordinates[i+1]=matchCoords[0]
+					goodCoords[i]=1
+					goodCoords[i+1]=1
 					
 					if(templateSeqArray[readNum][i]=="D"):
 						identifiedIndexBCs.append(topBlastResult[0])
+			
 			if(not reversedRead and startingCoordinates[0] == None): #put the 0 in the right place depending on if the read is reversed or not relative to the template if we haven't found it already
 				startingCoordinates[0] = 0
 			if(reversedRead and startingCoordinates[len(startingCoordinates)-1] == None):
@@ -629,6 +659,20 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 			if(not reversedRead and startingCoordinates[len(startingCoordinates)-1] == None):
 				startingCoordinates[len(startingCoordinates)-1] = int(args.readLength)
 			
+			if(0 in goodCoords):
+				for i in range(0,len(templateSeqArray[readNum])): #use expected length of features to fill in missing coordinates, templated off of mapped coordinates if possible
+					if(templateSeqArray[readNum][i] in ["D","U","X"] and startingCoordinates[i+1] is None and not startingCoordinates[i] is None and i in goodCoords):
+						startingCoordinates[i+1] = startingCoordinates[i] + templateSeqLengthsArray[readNum][i]
+					elif(templateSeqArray[readNum][i] in ["D","U","X"] and startingCoordinates[i] is None and not startingCoordinates[i+1] is None and (i+1) in goodCoords):
+						startingCoordinates[i] = startingCoordinates[i+1] - templateSeqLengthsArray[readNum][i]
+					elif(templateSeqArray[readNum][i] in ["D","U","X"] and startingCoordinates[i+1] is None and not startingCoordinates[i] is None):
+						startingCoordinates[i+1] = startingCoordinates[i] + templateSeqLengthsArray[readNum][i]
+					else:
+						continue
+			# if(readID <= 10):
+				# print(readID)
+				# print(readSeqRecordList[readID][readNum])
+				# print(startingCoordinates)
 			for i in range(0,len(templateSeqArray[readNum])): #now that we have all the coordinates, let us extract the sequences for each template feature
 				#set the end coordinate of this feature properly
 				if(startingCoordinates[i] == None or startingCoordinates[i+1] == None):
@@ -641,7 +685,8 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 					
 				if(templateSeqArray[readNum][i]=="U"):#extract UMI sequences if any			
 					UMIseq = readSeqRecordList[readID][readNum].seq[start:end]
-					
+					# if(readID <= 10):
+						# print("UMI:\t"+UMIseq)
 					if(len(UMIseq)>0 and args.UMI):
 						identifiedUMISequences.append(UMIseq)
 				if(templateSeqArray[readNum][i]=="X"):#extract coordinates of any BC region that exist
@@ -651,6 +696,8 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 						end = end - int(args.barcode3PrimeTrimLength)
 					
 					mybc = readSeqRecordList[readID][readNum][start:end]
+					# if(readID <= 10):
+						# print("BC:\t"+mybc)
 					if(len(mybc.seq)>0):
 						identifiedBCSeqRecords.append(mybc)
 		
@@ -862,6 +909,12 @@ args.bcNGapLength = int(args.bcNGapLength)
 parseTemplateSeq()
 parseSampleFile()
 createConstRegionFasta()
+
+global templateSeqLengthsArray
+global templateSeqArray
+print(templateSeqArray)
+print(templateSeqLengthsArray)
+#sys.exit(0)
 
 ## Demultiplex data using multiprocessing if there are any to be demultiplexed
 lA = identifyUsedFastqFiles()
