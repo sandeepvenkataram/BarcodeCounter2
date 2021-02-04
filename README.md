@@ -55,3 +55,14 @@ In our experience, amplicon sequences appear to "recombine" on the Illumina sequ
 
 Minimize the number of PCR cycles used to generate the amplicons. More cycles = more chances for sequence errors and jack-potting events causing individual barcodes to be over- or under-represented. If you need more template, run multiple independent reactions and then pool them together to minimize this effect. You should also use high-fidelity polymerases to reduce errors.
 
+
+# BarcodeExtractor
+
+This software is a modification of barcodeCounter, whose purpose is to extract barcodes from FASTA formatted sequence files. This software is primarily used to extract barcodes from Sanger sequencing of individual barcoded clones.
+
+# Required input arguments
+
+Users need to supply:
+1. An input FASTA file
+2. A sequence template, as defined in barcodeCounter
+3. An output directory

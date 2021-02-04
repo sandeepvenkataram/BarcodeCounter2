@@ -1,5 +1,5 @@
 ###########################################################################
-# June 24th 2019
+# February 1, 2021
 # Sandeep Venkataram, PhD.
 # Postdoctoral Scholar, Kryazhimskiy Lab, 
 # UCSD Division of Biological Sciences
@@ -13,10 +13,6 @@
 # that adapters were added by PCR and not blunt end ligation since it assumes
 # a constant orientation of all reads. It uses python multiprocessing for speed
 # 
-# 
-# There is legacy code to do clustering with Dada2. As it is too slow for typical 
-# barcode calling purposes, it has been commented out.
-# 
 # Dependencies:
 #  Python 3
 #  BioPython
@@ -25,8 +21,8 @@
 #  bwa (recommended) or bowtie2
 #  linux environment for shell scripting (grep and cut)
 # 
-# Execution command for sample data
-#	python3 barcodeCounter.py -fastqDir ../BCCounterTesting/rawFastqFiles/ -outputDir ../BCCounterTesting/testBCCounterOutputDir/ -templateSeq ../BCCounterTesting/sequenceTemplate.txt -sample ../BCCounterTesting/sampleFile.txt -multiBCFasta ../BCCounterTesting/primerIndexSeq.fasta -pairedEnd -useUMI -numThreads 3
+# Execution command for sample data. Execute from within SampleData directory, after making an outputDir subdirectory. Using a desktop w/ AMD Ryzen 5 1600, this sample takes XX minutes to execute.
+#	python3 ../barcodeCounter.py -fastqDir rawFastqFiles/ -outputDir outputDir/ -templateSeq sequenceTemplate.txt -sample sampleFile.txt -multiBCFasta primerIndexSeq.fasta -pairedEnd -useUMI -numThreads 3
 #
 ###########################################################################
 
@@ -86,7 +82,7 @@ constantRegionsBlastParams = ["-word_size", "6","-outfmt","6","-evalue","1E0"]
 ###########################################################################
 
 
-cmdLineArgParser = argparse.ArgumentParser(description="Process Illumina PCR Amplicon Fastq files to count barcode frequencies. Must have blastn and dada2 (R Bioconductor  package) installed to run. Make sure there are no spaces in any file names or directory paths, the program will not work otherwise. Make sure that files are already split by their illumina indices (N700 / S500 index). This code will not function if there are multiple barcodes or internal multiplexing barcodes within a single read. Please use the readLength flag to solve this issue. \n\nGenerated Files:\n\nnumReadsFoundPerSample: One file per input fastq file, it details the assignment of each read to a combination of inline indices if they exist, and the subsequent filtering of reads. The file has 2 columns, the first being a unique identifier for the fastq file and inline index combination identified, and the second being an array of 6 numbers binning the reads into the following categories: \n\t1. correct reads used for subsequent mapping. \n\t2. There are too many Ns in the read.\n\t3. UMIs have been requested and not identified in the read/\n\t4. There is no barcode found in the read.\n\t5. The combination of indices do not match a sample specified in the sampleFile.\n\t6. A second check for finding a valid barcode in the read.\n\n For each sample in SampleFile with at least one barcode found a number of files are generated.\n R1(R2).fastq - raw (possibly truncated depending on the readLength parameter) reads associated with this sample\n barcode.fastq - the portion of the reads associated with all barcode sequences concatenated together, in the same order as the R1/R2.fastq files\n UMISeqs.tab - tab delmited UMI sequences if they exist and are being used, in the same order as the R1/R2.fastq files.\n readBarcodeID.txt - the ID number of the barcode in the clusteredBCs.fasta file that each read was mapped to, in the same order as the R1/R2.fastq files.\nbarcodeCalls.tab - Count of each barcode in the sample, removing UMI duplicates if asked for. Line 1 contains the counts for barcode 1 (defined in clusteredBCs.fasta), line 2 for barcode 2 etc.\n\nallBarcodeCalls.tab - tab delimited concatenation of all of the barcodeCalls.tab files, with a header row identifying which column comes from which sample.")
+cmdLineArgParser = argparse.ArgumentParser(description="Process Illumina PCR Amplicon Fastq files to count barcode frequencies. Must have blastn installed to run. Make sure there are no spaces in any file names or directory paths, the program will not work otherwise. Make sure that files are already split by their illumina indices (N700 / S500 index). \n\nGenerated Files:\n\nnumReadsFoundPerSample: One file per input fastq file, it details the assignment of each read to a combination of inline indices if they exist, and the subsequent filtering of reads. The file has 2 columns, the first being a unique identifier for the fastq file and inline index combination identified, and the second being an array of 6 numbers binning the reads into the following categories: \n\t1. correct reads used for subsequent mapping. \n\t2. There are too many Ns in the read.\n\t3. UMIs have been requested and not identified in the read/\n\t4. There is no barcode found in the read.\n\t5. The combination of indices do not match a sample specified in the sampleFile.\n\t6. A second check for finding a valid barcode in the read.\n\n For each sample in SampleFile with at least one barcode found a number of files are generated.\n R1(R2).fastq - raw (possibly truncated depending on the readLength parameter) reads associated with this sample\n barcode.fastq - the portion of the reads associated with all barcode sequences concatenated together, in the same order as the R1/R2.fastq files\n UMISeqs.tab - tab delmited UMI sequences if they exist and are being used, in the same order as the R1/R2.fastq files.\n readBarcodeID.txt - the ID number of the barcode in the clusteredBCs.fasta file that each read was mapped to, in the same order as the R1/R2.fastq files.\nbarcodeCalls.tab - Count of each barcode in the sample, removing UMI duplicates if asked for. Line 1 contains the counts for barcode 1 (defined in clusteredBCs.fasta), line 2 for barcode 2 etc.\n\nallBarcodeCalls.tab - tab delimited concatenation of all of the barcodeCalls.tab files, with a header row identifying which column comes from which sample.")
 cmdLineArgParser.add_argument("-fastqDir", dest="fastqDir", help="directory location of fastq files",required=True)
 cmdLineArgParser.add_argument("-outputDir", dest="outputDir", help="location of output directory",required=True)
 cmdLineArgParser.add_argument("-templateSeq", dest="templateSeqFile", help="Template sequence of amplicon locus. This file contains a single line with standard DNA bases. UMI (unique molecular identifier) sequences are coded as U, multiplexing indices are coded as D and barcode loci coded as X. If these features have different lengths between samples, define the template using the longest possible length of each feature. Every feature annotated must be covered by the sequencing data, and no feature can span the exact middle of the template sequence when using paired end data.",required=True)
@@ -555,10 +551,11 @@ def extractRegionsFromFastq(readSeqRecordList, prefixName):
 	# make a fasta file from all reads we are processing and blast against database of all index and constant regions
 	readSeqFileName = args.outputDir+"."+prefixName+"_readSeq.fasta"
 	with open(readSeqFileName,"w") as outfasta:
+		seqRecordArray = []
 		for readID in range(0,len(readSeqRecordList)):
 			for i in range(0,len(templateSeqArray)):
-				outfasta.write(">read_"+str(readID)+"_"+str(i)+"\n")
-				outfasta.write(str(readSeqRecordList[readID][i].seq)+"\n")
+				seqRecordArray.append(SeqRecord(readSeqRecordList[readID][i].seq,id="read_"+str(readID)+"_"+str(i),name="",description=""))
+		SeqIO.write(seqRecordArray,outfasta,"fasta")
 	
 	# blast reads against constant and multiplexing index sequences
 	blastCommand = [args.blastPath+"blastn","-query",readSeqFileName,"-db",args.outputDir+allConstRegionsFileName]
@@ -732,12 +729,13 @@ def clusterBarcodesDNAClust():
 		readCounter = 1
 		
 		with open(dedupFileName,"w") as outfileHandle, open(readCountFileName,"w") as readCountFileHandle:
+			seqsToWrite = []
 			for line in uniqueBCLines.keys():
 				if 'N' not in line and uniqueBCLines[line] > 3 and len(line)>0 and len(line) <= int(1.5*expectedBarcodeLength) : #remove any reads with Ns in it (< .5% of reads) or sequences with too few reads or sequences with barcodes of 0 length (if they somehow got missed) or sequences that are too long (more than 50% longer than the expected sequence length)
-					outfileHandle.write(">"+str(readCounter)+"\n")
-					outfileHandle.write(line+"\n")
+					seqsToWrite.append(SeqRecord(Seq(line),id=str(readCounter),name="",description=""))
 					readCountFileHandle.write(str(uniqueBCLines[line])+"\n")
 					readCounter +=1
+			SeqIO.write(seqsToWrite,outfileHandle,"fasta")
 			
 	# use DNAclust to cluster reads
 	callFunction = [args.DNAclustPath+'dnaclust', '-s','.95','--approximate-filter','-k','6', '-t',str(args.numThreads),'-i',dedupFileName,'>'+dnaclustOutputFileName]
@@ -755,20 +753,14 @@ def clusterBarcodesDNAClust():
 	totalNumBCs = len(bcsToUse)
 	maxBCToUseIndex = bcsToUse[totalNumBCs-1]
 	bcsToUseIndex = 0
-	curIndex = 1
+	recordsToWrite = []
 	with open(dedupFileName,"r") as infile, open(clusteredBCFileName,"w") as outfile:
-		for headerline in infile:
-			if(bcsToUseIndex > totalNumBCs - 1):
-				break
-			headerline = line.strip()
-			seqline = infile.readline()
-			seqline = seqline.strip()
-			if(curIndex == bcsToUse[bcsToUseIndex]):
+		for record in SeqIO.parse(infile,"fasta"):
+			if(bcsToUseIndex < totalNumBCs and int(str(record.id)) == bcsToUse[bcsToUseIndex]):
 				bcsToUseIndex +=1
-				outfile.write(">"+str(bcsToUseIndex+1)+"\n")
-				outfile.write(seqline+"\n")
-				
-			curIndex +=1	
+				record.id=str(bcsToUseIndex)
+				recordsToWrite.append(record)
+		SeqIO.write(recordsToWrite,outfile,"fasta")
 	
 	args.barcodeListFile = clusteredBCFileName
 
@@ -910,8 +902,6 @@ parseTemplateSeq()
 parseSampleFile()
 createConstRegionFasta()
 
-global templateSeqLengthsArray
-global templateSeqArray
 print(templateSeqArray)
 print(templateSeqLengthsArray)
 #sys.exit(0)
