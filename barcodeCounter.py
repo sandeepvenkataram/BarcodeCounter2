@@ -239,7 +239,7 @@ def identifyUsedFastqFiles():
 		mySample = sample.Sample
 		
 		if(args.resplitFastq or not os.path.isfile(args.outputDir+mySample+"_barcode.fastq")):
-			patternString = re.compile(".*"+sample.FilePrefix+".*.fastq(.gz)?")
+			patternString = re.compile(".*"+sample.FilePrefix+".*")
 			readFiles = glob.glob(args.fastqDir+"*")
 			readFiles2 = list(filter(patternString.match,readFiles))
 			readFiles2.sort()
