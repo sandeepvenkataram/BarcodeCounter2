@@ -103,6 +103,7 @@ cmdLineArgParser.add_argument("-numThreads", dest="numThreads", default=1,  help
 cmdLineArgParser.add_argument("-pairedEnd", dest="pairedEnd", action="store_true",  help="Use if sequencing data is paired end")
 cmdLineArgParser.add_argument("-readLength", dest="readLength", type=int, default=100,  help="Expected length of each read from sequencing machine. Default = 100. Reduce this number from the true read length if necessary such that non-constant regions of the barcode locus are not shared between reads. This does not modify the input fastq files, but effectively truncates reads before processing")
 cmdLineArgParser.add_argument("-remapBarcodes", dest="remapBarcodes", action="store_true",  help="Set to True if you want to remap barcodes even if the files already exist")
+cmdLineArgParser.add_argument("-reverseRead2", dest="reverseRead2", action="store_true",  help="Set to True if you want to reverse-complement read2 when using paired-end data")
 cmdLineArgParser.add_argument("-resplitFastq", dest="resplitFastq", action="store_true",  help="Use flag if you want to resplitthe raw fastq files (i.e. if you have already done this and want to do it again).")
 cmdLineArgParser.add_argument("-useUMI", dest="UMI", action="store_true",  help="Use flag if you want to remove PCR duplicate reads using UMI data")
 
@@ -347,7 +348,10 @@ def demultiplexFastq(fastqPair):
 			readCounter = readCounter + 1
 			fwdRec = fwdRec[0:args.readLength]
 			revRec = revRec[0:args.readLength]
-			readList.append([fwdRec,revRec.reverse_complement()])
+			if(args.reverseRead2):
+				readList.append([fwdRec,revRec.reverse_complement()])
+			else:
+				readList.append([fwdRec,revRec])
 			if(readCounter % fileBufferSize != 0): #if we are not at file buffer size, do not run parser since file io is super expensive and we want to minimize it
 				continue
 			indexCounter = demultiplexFastqHelper(readList, fastqPair, indexCounter, badFwdReadsHandle, badRevReadsHandle) #process buffered reads using helper method
