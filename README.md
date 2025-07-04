@@ -3,21 +3,41 @@
 This software is designed to generate barcode frequency counts from trimmed / quality controlled Illumina sequencing data (fastq files). It can accept arbitrary barcode locus designs, allowing for multiple barcodes, UMI sequences and inline multiplexing indices. It can process both single-end and paired-end PCR amplicon data. It assumes that adapters were added by PCR and not blunt end ligation since it assumes a constant orientation of all reads. It uses python multiprocessing for speed.
 
 
-# Dependencies:
+# Quick Start
+
+1. Install the [Pixi](https://pixi.sh/latest/) package manager
+2. Clone the repository
+3. Install the BarcodeCounter2 pixi environment via `pixi install`
+4. Start a shell session within the environment via `pixi shell`
+5. Run the software via `pixi run`. Use the `-h` flag or run without arguments to see all command-line options.
+6. \[Optional\] Test the software via `pixi test`
+
+# Dependencies
+
+Pixi package manager
+Unix environment
+
+The package manager will install all dependencies, which include
 
 Python 3
 
 BioPython
 
-DNAClust
+Pandas
 
 BLAST suite
 
-Bowtie2 or BWA
+Bowtie2
+
+BWA
+
+# Legacy Scripts
+
+The original version of BarcodeCounter2 was written in ~2021 as a single-file script in absolutely horrendous Python. If you have some burning desire to use the old script, you can find it in the `old_scripts` subdirectory. The current version (2025) has been refactored extensively for readability/usability but has unchanged functionality.
 
 # Execution command for sample data
 
-python3 barcodeCounter.py -fastqDir SampleData/rawFastqFiles/ -outputDir OutputDir/ -templateSeq SampleData/sequenceTemplate.txt -sample SampleData/sampleFile.txt -multiBCFasta SampleData/primerIndexSeq.fasta -pairedEnd -useUMI -numThreads 3
+`pixi run -fastqDir SampleData/rawFastqFiles/ -outputDir OutputDir/ -templateSeq SampleData/sequenceTemplate.txt -sample SampleData/sampleFile.txt -multiBCFasta SampleData/primerIndexSeq.fasta -pairedEnd -useUMI -numThreads 3`
 
 For detailed help information, run the program without any argument or use the -h flag.
 
@@ -55,10 +75,8 @@ In our experience, amplicon sequences appear to "recombine" on the Illumina sequ
 
 Minimize the number of PCR cycles used to generate the amplicons. More cycles = more chances for sequence errors and jack-potting events causing individual barcodes to be over- or under-represented. If you need more template, run multiple independent reactions and then pool them together to minimize this effect. You should also use high-fidelity polymerases to reduce errors.
 
+For further reading, please see [Johnson*, Venkataram* and Kryazhimskiy](https://link.springer.com/article/10.1007/s00239-022-10083-z) "Best Practices in Designing, Sequencing, and Identifying Random DNA Barcodes". Journal of Molecular Evolution, 2023.
 
-# BarcodeExtractor
-
-This software is a modification of barcodeCounter, whose purpose is to extract barcodes from FASTA formatted sequence files. This software is primarily used to extract barcodes from Sanger sequencing of individual barcoded clones.
 
 # Required input arguments
 

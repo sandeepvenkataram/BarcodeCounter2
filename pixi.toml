@@ -1,0 +1,17 @@
+[workspace]
+channels = ["conda-forge", "bioconda"]
+name = "BarcodeCounter2"
+platforms = ["linux-64", "osx-arm64", "osx-64"]
+version = "0.1.0"
+
+[tasks]
+run = "python barcode_counter.py"
+test = "python test_suite.py"
+
+[dependencies]
+    python = "==3.12.11"
+    bwa = ">=0.7, <0.8"
+    bowtie2 = ">=2.5, <2.6"
+    blast = "==2.16.0"
+    biopython = "==1.84"
+    pandas = "==2.2.3"

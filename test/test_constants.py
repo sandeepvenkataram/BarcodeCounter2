@@ -1,0 +1,5 @@
+TEST_FILE_DIR = 'test/files/'
+TEST_RAW_FASTQ_FILE_DIR = f'{TEST_FILE_DIR}rawFastqFiles/'
+TEST_PRIMER_INDEX_SEQ_FILE = f'{TEST_FILE_DIR}primerIndexSeq.fasta'
+TEST_SAMPLE_FILE = f'{TEST_FILE_DIR}sampleFile.txt'
+TEST_SEQUENCE_TEMPLATE = f'{TEST_FILE_DIR}sequenceTemplate.txt'

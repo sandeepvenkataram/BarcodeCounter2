@@ -11,3 +11,12 @@ SampleData/primerIndexSeq.fasta.nsq
 BCEvoAnalysis.py
 SampleData/Icon
 SampleData/rawFastqFiles/Icon
+/SampleData/outputDir
+OutputDir/
+test/__pycache__/
+lib/__pycache__/
+__pycache__/
+
+# pixi environments
+.pixi
+*.egg-info
