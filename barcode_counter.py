@@ -1,13 +1,18 @@
-
+import subprocess
 from collections import defaultdict
 from multiprocessing import Pool
-import subprocess
 from pathlib import Path
 
 from lib.argparse import generate_argparser
 from lib.clustering import clusterBarcodesDNAClust
 from lib.demultiplex import demultiplex_fastq
-from lib.file_io import create_const_region_fasta, generate_final_tables, identify_used_fastq_files, parse_sample_file, parse_template_seq
+from lib.file_io import (
+    create_const_region_fasta,
+    generate_final_tables,
+    identify_used_fastq_files,
+    parse_sample_file,
+    parse_template_seq,
+)
 from lib.mapping import map_barcodes
 
 
@@ -23,13 +28,11 @@ def main():
     # create the output directory
     Path(args['output_dir']).mkdir(parents=True, exist_ok=True)
 
-
     with open(args['template_seq_file'], encoding='utf-8') as f:
         sequence = f.readline().strip()
     template_array = parse_template_seq(sequence, args)
     sample_array = parse_sample_file(args['sample_file'], template_array)
     template_seq_length_dict = create_const_region_fasta(template_array, args)
-    
 
     ## Demultiplex data using multiprocessing if there are any to be demultiplexed
     identify_used_fastq_files(sample_array, args)
@@ -39,39 +42,37 @@ def main():
             sample_map[sample.file_prefix].append(sample)
     sample_grouped_arrays = [v for _, v in sample_map.items()]
     used_fastq_files = [(x, args, template_array, template_seq_length_dict) for x in sample_grouped_arrays]  # need to add in args as a tuple as we are running this through pool.map
-    if(len(used_fastq_files)>0):
-        with Pool(processes = int(args['num_threads'])) as pool:
-           pool.map(demultiplex_fastq, used_fastq_files)
-            
+    if len(used_fastq_files) > 0:
+        with Pool(processes=int(args['num_threads'])) as pool:
+            pool.map(demultiplex_fastq, used_fastq_files)
+
     ## If we are only trying to demultiplex, quit now
-            
+
     if args['demultiplex_only']:
         # print("Terminating after splitting raw fastq files as requested.")
         return
 
-
     ## Cluster barcodes using DNAClust if necessary
-        
+
     if args['barcode_list_file'] is None:
         clusterBarcodesDNAClust(args, sequence)
 
-
     ## Make database from barcode fasta file for mapping
-    if(args['use_bowtie2']):
-        subprocess.call([args['bowtie2_path']+"bowtie2-build",args['barcode_list_file'],args['barcode_list_file']])
+    if args['use_bowtie2']:
+        subprocess.call([args['bowtie2_path'] + "bowtie2-build", args['barcode_list_file'], args['barcode_list_file']])
     else:
-        subprocess.call([args['bwa_path']+"bwa","index",args['barcode_list_file']])
+        subprocess.call([args['bwa_path'] + "bwa", "index", args['barcode_list_file']])
 
     ## Map barcodes with multiprocessing
 
     mapping_args = [(sample, args) for sample in sample_array]
-    with Pool(processes = int(args['num_threads'])) as pool:
+    with Pool(processes=int(args['num_threads'])) as pool:
         pool.map(map_barcodes, mapping_args)
 
-
-    ## Generate final output table	
+    ## Generate final output table
 
     generate_final_tables(args)
+
 
 if __name__ == '__main__':
     main()

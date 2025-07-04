@@ -1,13 +1,14 @@
-from dataclasses import dataclass
 import glob
 import os
 import re
+from dataclasses import dataclass
 
 from lib.constants import VALID_FEATURE_TYPES
 
 ###########################################################################
 ## Struct Definitions
 ###########################################################################
+
 
 @dataclass
 class TemplateSeqFeature:
@@ -16,7 +17,7 @@ class TemplateSeqFeature:
     read_num: int
     feature_position: int
     fasta_feature_name: str
-    
+
     @property
     def seq_length(self) -> int:
         '''Length of the sequence'''
@@ -37,13 +38,14 @@ class TemplateSeqFeature:
 
 class TemplateSequence:
     '''Representation of a template sequence for read splitting'''
+
     sequence: str
     CONST_REGION_CODE = 'CONST_REGION'
 
     def __init__(self, sequence, read_num: int):
-        self.valid_special_characters = VALID_FEATURE_TYPES.keys() 
-        self.sequence=sequence
-        self.read_num=read_num
+        self.valid_special_characters = VALID_FEATURE_TYPES.keys()
+        self.sequence = sequence
+        self.read_num = read_num
         if len(self.sequence) == 0:
             raise ValueError('Expected a non-empty sequence!')
         if len(re.sub('[ACGTacgtXUDNn]', '', self.sequence)) > 0:
@@ -59,13 +61,15 @@ class TemplateSequence:
         res = []
         for i, seq in enumerate(seq_split):
             code = self.__get_char_class(seq[0])
-            res.append(TemplateSeqFeature(
-                code=code if code != self.CONST_REGION_CODE else seq,
-                sequence=seq,
-                read_num=self.read_num,
-                feature_position=i,
-                fasta_feature_name=f'const_region_{self.read_num}_{i}' if code == self.CONST_REGION_CODE else None,
-                ))
+            res.append(
+                TemplateSeqFeature(
+                    code=code if code != self.CONST_REGION_CODE else seq,
+                    sequence=seq,
+                    read_num=self.read_num,
+                    feature_position=i,
+                    fasta_feature_name=f'const_region_{self.read_num}_{i}' if code == self.CONST_REGION_CODE else None,
+                )
+            )
         return res
 
     def __get_char_class(self, my_seq: str):
@@ -75,12 +79,12 @@ class TemplateSequence:
 
     def __split_sequence_by_group(self) -> list[str]:
         cur_char_idex = 0
-        seq_split = []        
+        seq_split = []
         for i, my_char in enumerate(self.sequence):
             if self.__get_char_class(self.sequence[cur_char_idex]) == self.__get_char_class(my_char):
                 continue
             seq_split.append(self.sequence[cur_char_idex:i])
-            cur_char_idex=i
+            cur_char_idex = i
         seq_split.append(self.sequence[cur_char_idex:])
         return seq_split
 
@@ -92,7 +96,7 @@ class SampleFileMetadata:
     sample: str
     file_prefix: str
     int_multi_bc_array: list[str]
-    
+
     def __init__(self, sample: str, file_prefix: str, int_multi_bc_array: list[str]):
         self.sample = sample
         self.file_prefix = file_prefix
@@ -103,36 +107,36 @@ class SampleFileMetadata:
         self.r1_fastq = None
         self.r2_fastq = None
         self.umi_tab = None
-        self.resplit=False
-        
+        self.resplit = False
+
     def identify_fastq_files(self, args: dict):
-        pattern_string = re.compile('.*'+self.file_prefix+'.*')
-        read_files = glob.glob(args['fastq_dir']+'*')
+        pattern_string = re.compile('.*' + self.file_prefix + '.*')
+        read_files = glob.glob(args['fastq_dir'] + '*')
         read_files_2 = list(filter(pattern_string.match, read_files))
         read_files_2.sort()
         my_fwd = None
         my_rev = None
         if len(read_files_2) == 0:
-            raise ValueError('No matching fastq files found for '+self.file_prefix)
+            raise ValueError('No matching fastq files found for ' + self.file_prefix)
         if len(read_files_2) > 2:
-            raise ValueError('More than two matching fastq files found for '+self.file_prefix)
+            raise ValueError('More than two matching fastq files found for ' + self.file_prefix)
         my_fwd = read_files_2[0]
-        if (args['is_paired_end']):
+        if args['is_paired_end']:
             my_rev = read_files_2[1]
 
         self.fwd_fastq = my_fwd
         self.rev_fastq = my_rev
 
     def touch_files(self, args: dict):
-        self.bc_fastq = args['output_dir']+self.sample+'_barcode.fastq'
-        self.r1_fastq = args['output_dir']+self.sample+'_R1.fastq'
-        self.r2_fastq = args['output_dir']+self.sample+'_R2.fastq' if len(self.int_multi_bc_array) == 2 and args['is_paired_end'] else None
-        self.umi_tab = args['output_dir']+self.sample+'_UMISeqs.tab'
+        self.bc_fastq = args['output_dir'] + self.sample + '_barcode.fastq'
+        self.r1_fastq = args['output_dir'] + self.sample + '_R1.fastq'
+        self.r2_fastq = args['output_dir'] + self.sample + '_R2.fastq' if len(self.int_multi_bc_array) == 2 and args['is_paired_end'] else None
+        self.umi_tab = args['output_dir'] + self.sample + '_UMISeqs.tab'
         for file in [self.bc_fastq, self.r1_fastq, self.r2_fastq, self.umi_tab]:
             if file is None:
                 continue
             if not os.path.exists(file) or args['resplit_fastq']:
-                self.resplit=True
+                self.resplit = True
                 with open(file, 'w', encoding='utf-8'):
                     pass
 
@@ -144,10 +148,10 @@ class SampleFileMetadata:
 
     def __hash__(self):
         return str(self).__hash__()
-        
+
 
 class IndexCounter:
-    
+
     def __init__(self, sample_key: str):
         self.sample_key = sample_key
         self.good_reads = 0
@@ -171,11 +175,11 @@ class IndexCounter:
             raise ValueError(f'Invalid flag {flag} for index counting update!')
 
     def to_dict(self) -> dict:
-        return {'sample': self.sample_key,
-                'good_reads': self.good_reads,
-                'n_reads': self.n_reads,
-                'missing_umi': self.missing_umi,
-                'wrong_num_bcs': self.wrong_num_bcs,
-                'no_matching_sample': self.no_matching_sample,
-                }
-
+        return {
+            'sample': self.sample_key,
+            'good_reads': self.good_reads,
+            'n_reads': self.n_reads,
+            'missing_umi': self.missing_umi,
+            'wrong_num_bcs': self.wrong_num_bcs,
+            'no_matching_sample': self.no_matching_sample,
+        }

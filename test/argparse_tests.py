@@ -2,6 +2,7 @@ import unittest
 
 from lib import argparse
 
+
 class ArgparseTests(unittest.TestCase):
     
     def test_basics(self):
